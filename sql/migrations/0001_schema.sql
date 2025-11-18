@@ -61,6 +61,34 @@ CREATE INDEX idx_tenant_slug ON tenants(slug);
 CREATE INDEX idx_tenant_code ON tenants(code);
 
 -- ==========================================================
+-- USERS
+-- ==========================================================
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+
+    email TEXT NOT NULL,
+    email_verified BOOLEAN DEFAULT FALSE,
+
+    password_hash TEXT,
+    name TEXT,
+
+    phone TEXT,
+    phone_verified BOOLEAN DEFAULT FALSE,
+
+    avatar_url TEXT,
+
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    UNIQUE (tenant_id, email)
+);
+
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_status ON users(status);
+
+-- ==========================================================
 -- TENANT USERS (RBAC)
 -- ==========================================================
 CREATE TABLE tenant_users (
@@ -220,34 +248,6 @@ CREATE TABLE brandings (
 CREATE INDEX idx_branding_tenant_id ON brandings(tenant_id);
 
 -- ==========================================================
--- USERS
--- ==========================================================
-CREATE TABLE users (
-    id BIGINT PRIMARY KEY,
-    tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-
-    email TEXT NOT NULL,
-    email_verified BOOLEAN DEFAULT FALSE,
-
-    password_hash TEXT,
-    name TEXT,
-
-    phone TEXT,
-    phone_verified BOOLEAN DEFAULT FALSE,
-
-    avatar_url TEXT,
-
-    status TEXT NOT NULL DEFAULT 'ACTIVE',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-
-    UNIQUE (tenant_id, email)
-);
-
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_status ON users(status);
-
--- ==========================================================
 -- OAUTH APPS
 -- ==========================================================
 CREATE TYPE oauth_app_type AS ENUM ('WEB', 'MOBILE', 'M2M');
@@ -350,7 +350,7 @@ CREATE TABLE oauth_keys (
     tenant_id BIGINT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
 
     kid TEXT NOT NULL UNIQUE,
-    algo TEXT NOT NULL DEFAULT 'HS256',
+    algorithm TEXT NOT NULL DEFAULT 'HS256',
     secret TEXT NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
 
