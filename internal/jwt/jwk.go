@@ -44,7 +44,7 @@ func (m *KeyManager) EnsureSigningKey(ctx context.Context, tenantID int64) (doma
 		KID:       uuid.NewString(),
 		Secret:    secret,
 		Algorithm: string(jose.HS256),
-		Active:    true,
+		IsActive:  true,
 	}
 
 	created, err := m.repo.CreateKey(ctx, key)

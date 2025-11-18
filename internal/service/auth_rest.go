@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
@@ -81,12 +80,15 @@ func (s *AuthService) RegisterWithPassword(ctx context.Context, tenantID int64, 
 	}
 
 	model := domain.User{
-		TenantID:     tenantID,
-		Email:        normalized,
-		PasswordHash: string(hashed),
-		Name:         strings.TrimSpace(name),
-		PictureURL:   "",
-		LockedUntil:  time.Unix(0, 0).UTC(),
+		TenantID:      tenantID,
+		Email:         normalized,
+		PasswordHash:  string(hashed),
+		Name:          strings.TrimSpace(name),
+		EmailVerified: false,
+		Phone:         "",
+		PhoneVerified: false,
+		AvatarURL:     "",
+		Status:        "ACTIVE",
 	}
 
 	created, err := s.users.Create(ctx, model)
@@ -97,8 +99,8 @@ func (s *AuthService) RegisterWithPassword(ctx context.Context, tenantID int64, 
 
 	providers := make([]string, 0, len(tenantCtx.AuthProviders))
 	for _, provider := range tenantCtx.AuthProviders {
-		if provider.Enabled {
-			providers = append(providers, provider.Type)
+		if provider.IsActive {
+			providers = append(providers, provider.ProviderType)
 		}
 	}
 
@@ -147,7 +149,7 @@ func (s *AuthService) RequestOTP(ctx context.Context, tenantID int64, phone, cha
 		span.RecordError(err)
 		return err
 	}
-	if !tenantCtx.OTPConfig.Enabled {
+	if !otpEnabled(tenantCtx.OTPConfig) {
 		return newOAuthError("unsupported_grant_type", "OTP login disabled for tenant.", http.StatusBadRequest)
 	}
 
@@ -162,7 +164,7 @@ func (s *AuthService) RequestOTP(ctx context.Context, tenantID int64, phone, cha
 		return newOAuthError("invalid_request", "Account not eligible for OTP login.", http.StatusBadRequest)
 	}
 
-	_ = generateOTP(user.PasswordHash, tenantCtx.OTPConfig.Length, tenantCtx.OTPConfig.Ttl)
+	_ = generateOTP(user.PasswordHash, otpCodeLength(tenantCtx.OTPConfig), otpTTL(tenantCtx.OTPConfig))
 	s.audit("rest.otp_request.accepted", "tenant_id", tenantID, "user_id", user.ID, "channel", channel)
 
 	return nil
@@ -212,7 +214,7 @@ func (s *AuthService) GetUserInfo(ctx context.Context, tenantID int64, userID in
 		ID:        user.ID,
 		Email:     user.Email,
 		Name:      user.Name,
-		AvatarURL: user.PictureURL,
+		AvatarURL: user.AvatarURL,
 	}, nil
 }
 
@@ -248,7 +250,7 @@ func newAuthTokensWithUser(user domain.User, tokenResp *TokenResponse) AuthToken
 			ID:        user.ID,
 			Email:     user.Email,
 			Name:      user.Name,
-			AvatarURL: user.PictureURL,
+			AvatarURL: user.AvatarURL,
 		},
 	}
 }

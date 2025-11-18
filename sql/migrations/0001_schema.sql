@@ -13,24 +13,12 @@ CREATE TABLE countries(
     currency TEXT NOT NULL
 );
 
-INSERT INTO countries (code, name, locale, currency) VALUES
-    ('ID', 'Indonesia', 'id-ID', 'IDR'),
-    ('SG', 'Singapore', 'en-SG', 'SGD')
-ON CONFLICT DO NOTHING;
-
 CREATE TABLE timezones(
     tz TEXT PRIMARY KEY,
     country_code TEXT NOT NULL REFERENCES countries(code)
 );
 
 CREATE INDEX idx_timezones_country_code ON timezones(country_code);
-
-INSERT INTO timezones(country_code, tz) VALUES
-    ('ID', 'Asia/Jakarta'),
-    ('ID', 'Asia/Makassar'),
-    ('ID', 'Asia/Jayapura'),
-    ('SG', 'Asia/Singapore')
-ON CONFLICT DO NOTHING;
 
 -- ==========================================================
 -- ENUM TYPES
@@ -434,6 +422,18 @@ CREATE TABLE oauth_user_identities (
 -- INITIAL TENANT SEED (platform + Kopi Kenangan)
 -- ==========================================================
 
+INSERT INTO countries (code, name, locale, currency) VALUES
+    ('ID', 'Indonesia', 'id-ID', 'IDR'),
+    ('SG', 'Singapore', 'en-SG', 'SGD')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO timezones(country_code, tz) VALUES
+    ('ID', 'Asia/Jakarta'),
+    ('ID', 'Asia/Makassar'),
+    ('ID', 'Asia/Jayapura'),
+    ('SG', 'Asia/Singapore')
+ON CONFLICT DO NOTHING;
+
 INSERT INTO tenants (id, type, name, code, slug, country_code, timezone, is_default, status)
 VALUES
     (1000, 'platform', 'SmallBiznis', 'SB', 'smallbiznis', 'SG', 'Asia/Singapore', TRUE, 'active'),
@@ -450,9 +450,8 @@ ON CONFLICT DO NOTHING;
 -- Primary domains
 INSERT INTO domains (id, tenant_id, host, is_primary, verified)
 VALUES
-    (1001, 1000, 'smallbiznisapp.test', TRUE, TRUE),
-    (2001, 2000, 'kopikenangan.smallbiznisapp.local', TRUE, TRUE),
-    (2002, 2000, 'kopikenangan.smallbiznisapp.test', TRUE, TRUE)
+    (1001, 1000, 'accounts.localhost', TRUE, TRUE),
+    (2001, 2000, 'kopikenangan.localhost', TRUE, TRUE),
 ON CONFLICT DO NOTHING;
 
 -- OAuth apps & clients (Postman-friendly defaults)
@@ -484,4 +483,86 @@ VALUES
         ARRAY['authorization_code', 'refresh_token'],
         ARRAY['openid', 'profile']
     )
+ON CONFLICT DO NOTHING;
+
+INSERT INTO oauth_keys (id, tenant_id, kid, algorithm, secret, is_active)
+VALUES
+    (1300, 1000, 'sb-key-1', 'HS256', encode(gen_random_bytes(32), 'hex'), TRUE),
+    (2300, 2000, 'kk-key-1', 'HS256', encode(gen_random_bytes(32), 'hex'), TRUE)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO oauth_idp_configs (
+    id,
+    tenant_id,
+    provider,
+    client_id,
+    client_secret,
+    issuer_url,
+    authorization_url,
+    token_url,
+    userinfo_url,
+    jwks_url,
+    scopes
+)
+VALUES
+    (
+        1400,
+        1000,
+        'oidc',
+        'dummy-client-id',
+        'dummy-client-secret',
+        'http://localhost:9000',
+        'http://localhost:9000/oauth2/authorize',
+        'http://localhost:9000/oauth2/token',
+        'http://localhost:9000/oauth2/userinfo',
+        'http://localhost:9000/oauth2/jwks',
+        ARRAY['openid','email','profile']
+    ),
+    (
+        2400,
+        2000,
+        'oidc',
+        'dummy-client-id',
+        'dummy-client-secret',
+        'http://localhost:9000',
+        'http://localhost:9000/oauth2/authorize',
+        'http://localhost:9000/oauth2/token',
+        'http://localhost:9000/oauth2/userinfo',
+        'http://localhost:9000/oauth2/jwks',
+        ARRAY['openid','email','profile']
+    )
+ON CONFLICT DO NOTHING;
+
+
+INSERT INTO saml_idp_configs (id, tenant_id, idp_entity_id, sso_url, certificate, acs_url, sp_entity_id)
+VALUES
+    (
+        1500, 2000,
+        'kopi-kenangan-saml',
+        'https://sso.kopikenangan.com/login',
+        '-----BEGIN CERTIFICATE----- FAKE -----END CERTIFICATE-----',
+        'https://kopikenangan.smallbiznisapp.local/saml/acs',
+        'smallbiznis-sp'
+    )
+ON CONFLICT DO NOTHING;
+
+-- Default auth providers
+INSERT INTO tenant_auth_providers (id, tenant_id, provider_type, is_active)
+VALUES
+    (5001, 1000, 'password', TRUE),
+    (5002, 1000, 'otp', TRUE),
+    (5003, 2000, 'password', TRUE),
+    (5004, 2000, 'otp', TRUE)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO password_configs (tenant_id, min_length, require_uppercase, require_number, require_symbol)
+VALUES
+    (1000, 8, FALSE, TRUE, FALSE),
+    (2000, 8, TRUE, TRUE, FALSE)
+ON CONFLICT DO NOTHING;
+
+INSERT INTO otp_configs (tenant_id, channel, provider, api_key, sender, template, expiry_seconds)
+VALUES
+    (1000, 'sms', 'debug', 'local-dev', 'SMALLBIZNIS', 'Your OTP is {{code}}', 300),
+    (2000, 'whatsapp', 'debug', 'local-dev', 'KOPIKENANGAN', 'OTP Anda: {{code}}', 300)
 ON CONFLICT DO NOTHING;

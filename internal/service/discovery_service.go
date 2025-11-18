@@ -40,9 +40,9 @@ func (s *DiscoveryService) TenantMetadata(ctx *tenant.Context) TenantDiscoveryRe
 	providers := make([]map[string]any, 0, len(ctx.AuthProviders))
 	for _, provider := range ctx.AuthProviders {
 		providers = append(providers, map[string]any{
-			"type":    provider.Type,
-			"name":    provider.Name,
-			"enabled": provider.Enabled,
+			"type":    provider.ProviderType,
+			"name":    provider.ProviderType,
+			"enabled": provider.IsActive,
 		})
 	}
 	return TenantDiscoveryResponse{

@@ -20,7 +20,7 @@ func TestResolverResolve(t *testing.T) {
 	require.Equal(t, "SmallBiznis", ctx.Tenant.Name)
 	require.Equal(t, "client", ctx.ClientID)
 	require.Len(t, ctx.AuthProviders, 1)
-	require.True(t, ctx.PasswordConfig.Enabled)
+	require.Equal(t, 8, ctx.PasswordConfig.MinLength)
 }
 
 type mockTenantRepo struct{}
@@ -38,19 +38,29 @@ func (m *mockTenantRepo) GetBranding(ctx context.Context, tenantID int64) (domai
 }
 
 func (m *mockTenantRepo) ListAuthProviders(ctx context.Context, tenantID int64) ([]domain.AuthProvider, error) {
-	return []domain.AuthProvider{{TenantID: tenantID, Type: "password", Enabled: true}}, nil
+	return []domain.AuthProvider{{TenantID: tenantID, ProviderType: "password", IsActive: true}}, nil
 }
 
 func (m *mockTenantRepo) GetPasswordConfig(ctx context.Context, tenantID int64) (domain.PasswordConfig, error) {
-	return domain.PasswordConfig{TenantID: tenantID, Enabled: true, MaxAttempts: 5}, nil
+	return domain.PasswordConfig{
+		TenantID:               tenantID,
+		MinLength:              8,
+		RequireUppercase:       false,
+		RequireNumber:          true,
+		RequireSymbol:          false,
+		AllowSignup:            true,
+		AllowPasswordReset:     true,
+		LockoutAttempts:        5,
+		LockoutDurationSeconds: 300,
+	}, nil
 }
 
 func (m *mockTenantRepo) GetOTPConfig(ctx context.Context, tenantID int64) (domain.OTPConfig, error) {
-	return domain.OTPConfig{TenantID: tenantID, Enabled: true, Length: 6}, nil
+	return domain.OTPConfig{TenantID: tenantID, Channel: "sms", ExpirySeconds: 300}, nil
 }
 
 func (m *mockTenantRepo) ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]domain.OAuthIDPConfig, error) {
-	return []domain.OAuthIDPConfig{{TenantID: tenantID, Provider: "google", Enabled: true}}, nil
+	return []domain.OAuthIDPConfig{{TenantID: tenantID, Provider: "google", ClientID: "id", ClientSecret: "secret", AuthorizationURL: "https://auth", TokenURL: "https://token", UserinfoURL: "https://userinfo", JWKSURL: "https://jwks"}}, nil
 }
 
 func strPtr(s string) *string {

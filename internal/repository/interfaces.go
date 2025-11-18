@@ -21,7 +21,6 @@ type TenantRepository interface {
 type UserRepository interface {
 	GetByEmail(ctx context.Context, tenantID int64, email string) (domain.User, error)
 	GetByID(ctx context.Context, tenantID, userID int64) (domain.User, error)
-	UpdateLoginStats(ctx context.Context, user domain.User) error
 	Create(ctx context.Context, user domain.User) (domain.User, error)
 }
 

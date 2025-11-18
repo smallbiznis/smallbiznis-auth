@@ -88,33 +88,15 @@ func (s *AuthService) PasswordGrant(ctx context.Context, tenantCtx *tenant.Conte
 		return nil, newOAuthError("invalid_grant", "Wrong email or password.", 400)
 	}
 
-	if user.Blocked {
-		return nil, newOAuthError("invalid_grant", "Wrong email or password.", 400)
-	}
-
-	if tenantCtx.PasswordConfig.Enabled && time.Now().Before(user.LockedUntil) {
-		span.RecordError(fmt.Errorf("account locked"))
-		return nil, newOAuthError("invalid_grant", "Account temporarily locked.", 400)
-	}
-
 	if bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
 		span.RecordError(fmt.Errorf("invalid password"))
-		s.recordFailure(ctx, &user, tenantCtx.PasswordConfig)
 		return nil, newOAuthError("invalid_grant", "Wrong email or password.", 400)
-	}
-
-	if tenantCtx.PasswordConfig.Enabled {
-		user.FailedAttempts = 0
-		user.LockedUntil = time.Time{}
-		if err := s.users.UpdateLoginStats(ctx, user); err != nil {
-			s.log().Error("failed to reset login stats", zap.Error(err))
-		}
 	}
 
 	providers := make([]string, 0, len(tenantCtx.AuthProviders))
 	for _, provider := range tenantCtx.AuthProviders {
-		if provider.Enabled {
-			providers = append(providers, provider.Type)
+		if provider.IsActive {
+			providers = append(providers, provider.ProviderType)
 		}
 	}
 
@@ -132,14 +114,14 @@ func (s *AuthService) OTPGrant(ctx context.Context, tenantCtx *tenant.Context, e
 	ctx, span := s.startSpan(ctx, "AuthService.OTPGrant")
 	defer span.End()
 
-	if !tenantCtx.OTPConfig.Enabled {
+	if !otpEnabled(tenantCtx.OTPConfig) {
 		return nil, newOAuthError("unsupported_grant_type", "OTP login disabled for tenant.", 400)
 	}
 	trimmed := strings.TrimSpace(code)
 	if trimmed == "" {
 		return nil, newOAuthError("invalid_grant", "OTP code required.", 400)
 	}
-	if tenantCtx.OTPConfig.Length > 0 && len(trimmed) != tenantCtx.OTPConfig.Length {
+	if len(trimmed) != otpCodeLength(tenantCtx.OTPConfig) {
 		return nil, newOAuthError("invalid_grant", "Invalid OTP code.", 400)
 	}
 	user, err := s.users.GetByEmail(ctx, tenantCtx.Tenant.ID, strings.ToLower(email))
@@ -147,7 +129,7 @@ func (s *AuthService) OTPGrant(ctx context.Context, tenantCtx *tenant.Context, e
 		span.RecordError(err)
 		return nil, newOAuthError("invalid_grant", "Wrong email or OTP.", 400)
 	}
-	expected := generateOTP(user.PasswordHash, tenantCtx.OTPConfig.Length, tenantCtx.OTPConfig.Ttl)
+	expected := generateOTP(user.PasswordHash, otpCodeLength(tenantCtx.OTPConfig), otpTTL(tenantCtx.OTPConfig))
 	if subtle.ConstantTimeCompare([]byte(trimmed), []byte(expected)) != 1 {
 		return nil, newOAuthError("invalid_grant", "Wrong email or OTP.", 400)
 	}
@@ -160,23 +142,6 @@ func (s *AuthService) OTPGrant(ctx context.Context, tenantCtx *tenant.Context, e
 		span.RecordError(err)
 	}
 	return resp, err
-}
-
-func (s *AuthService) recordFailure(ctx context.Context, user *domain.User, cfg domain.PasswordConfig) {
-	if !cfg.Enabled {
-		return
-	}
-	user.FailedAttempts++
-	if cfg.MaxAttempts > 0 && user.FailedAttempts >= cfg.MaxAttempts {
-		if cfg.LockoutInterval == 0 {
-			cfg.LockoutInterval = 15 * time.Minute
-		}
-		user.LockedUntil = time.Now().Add(cfg.LockoutInterval)
-		user.FailedAttempts = 0
-	}
-	if err := s.users.UpdateLoginStats(ctx, *user); err != nil {
-		s.log().Error("failed to update login stats", zap.Error(err))
-	}
 }
 
 // RefreshGrant rotates the refresh token and issues a new access token.
@@ -209,11 +174,12 @@ func (s *AuthService) RefreshGrant(ctx context.Context, tenantCtx *tenant.Contex
 
 	providers := make([]string, 0, len(tenantCtx.AuthProviders))
 	for _, provider := range tenantCtx.AuthProviders {
-		if provider.Enabled {
-			providers = append(providers, provider.Type)
+		if provider.IsActive {
+			providers = append(providers, provider.ProviderType)
 		}
 	}
-	effectiveScope := normalizeScope(coalesce(scope, token.Scope))
+	storedScope := strings.Join(token.Scopes, " ")
+	effectiveScope := normalizeScope(coalesce(scope, storedScope))
 	access, err := s.jwt.GenerateAccessToken(ctx, tenantCtx.Tenant, user, effectiveScope, issuer, providers)
 	if err != nil {
 		span.RecordError(err)
@@ -239,7 +205,7 @@ func (s *AuthService) AuthorizationCodeGrant(ctx context.Context, tenantCtx *ten
 		return nil, newOAuthError("unsupported_grant_type", "Authorization code flow disabled.", 400)
 	}
 	stored, err := s.codes.GetCode(ctx, tenantCtx.Tenant.ID, code)
-	if err != nil || stored.Used || time.Now().After(stored.ExpiresAt) {
+	if err != nil || stored.Revoked || time.Now().After(stored.ExpiresAt) {
 		return nil, newOAuthError("invalid_grant", "Invalid authorization code.", 400)
 	}
 	if redirectURI != "" && stored.RedirectURI != redirectURI {
@@ -255,11 +221,11 @@ func (s *AuthService) AuthorizationCodeGrant(ctx context.Context, tenantCtx *ten
 
 	providers := make([]string, 0, len(tenantCtx.AuthProviders))
 	for _, provider := range tenantCtx.AuthProviders {
-		if provider.Enabled {
-			providers = append(providers, provider.Type)
+		if provider.IsActive {
+			providers = append(providers, provider.ProviderType)
 		}
 	}
-	return s.issueTokens(ctx, tenantCtx, user, coalesce(scope, stored.Scope), issuer, providers)
+	return s.issueTokens(ctx, tenantCtx, user, coalesce(scope, defaultRESTScope), issuer, providers)
 }
 
 // DeviceCodeGrant is optional and currently unsupported.
@@ -310,15 +276,15 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantCtx *tenant.Context
 	}
 
 	refreshToken := randomString(s.cfg.RefreshTokenBytes)
-	accessTokenID := randomString(16)
 	oauthToken := domain.OAuthToken{
-		TenantID:      tenantCtx.Tenant.ID,
-		UserID:        user.ID,
-		ClientID:      tenantCtx.ClientID,
-		Scope:         effectiveScope,
-		RefreshToken:  refreshToken,
-		AccessTokenID: accessTokenID,
-		ExpiresAt:     time.Now().Add(s.cfg.RefreshTokenTTL),
+		TenantID:     tenantCtx.Tenant.ID,
+		ClientID:     tenantCtx.ClientID,
+		UserID:       user.ID,
+		AccessToken:  access,
+		RefreshToken: refreshToken,
+		Scopes:       strings.Fields(effectiveScope),
+		ExpiresAt:    time.Now().Add(s.cfg.RefreshTokenTTL),
+		CreatedAt:    time.Now(),
 	}
 
 	if _, err := s.tokens.CreateToken(ctx, oauthToken); err != nil {
@@ -384,6 +350,21 @@ func (s *AuthService) ValidateToken(ctx context.Context, tenantID int64, token, 
 // JWKS returns tenant JWKS set.
 func (s *AuthService) JWKS(ctx context.Context, tenantID int64) (gojose.JSONWebKeySet, error) {
 	return s.keys.JWKS(ctx, tenantID)
+}
+
+func otpEnabled(cfg domain.OTPConfig) bool {
+	return strings.TrimSpace(cfg.Channel) != ""
+}
+
+func otpCodeLength(cfg domain.OTPConfig) int {
+	return 6
+}
+
+func otpTTL(cfg domain.OTPConfig) time.Duration {
+	if cfg.ExpirySeconds <= 0 {
+		return 5 * time.Minute
+	}
+	return time.Duration(cfg.ExpirySeconds) * time.Second
 }
 
 func generateOTP(secret string, length int, ttl time.Duration) string {

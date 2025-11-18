@@ -74,9 +74,9 @@ func testTenantCtx() *tenant.Context {
 		Tenant:         domain.Tenant{ID: 1, Name: "SmallBiznis", Code: "client", Timezone: "Asia/Singapore"},
 		ClientID:       "client",
 		Branding:       domain.Branding{TenantID: 1, LogoURL: strPtr("https://cdn/logo.png")},
-		AuthProviders:  []domain.AuthProvider{{TenantID: 1, Type: "password", Enabled: true}},
-		PasswordConfig: domain.PasswordConfig{TenantID: 1, Enabled: true, MaxAttempts: 5},
-		OTPConfig:      domain.OTPConfig{TenantID: 1, Enabled: true, Length: 6, Ttl: time.Minute},
+		AuthProviders:  []domain.AuthProvider{{TenantID: 1, ProviderType: "password", IsActive: true}},
+		PasswordConfig: domain.PasswordConfig{TenantID: 1, MinLength: 8, LockoutAttempts: 5, LockoutDurationSeconds: 300},
+		OTPConfig:      domain.OTPConfig{TenantID: 1, Channel: "sms", ExpirySeconds: 300},
 	}
 }
 
@@ -109,8 +109,6 @@ func (n *noopUserRepo) GetByEmail(ctx context.Context, tenantID int64, email str
 func (n *noopUserRepo) GetByID(ctx context.Context, tenantID, userID int64) (domain.User, error) {
 	return domain.User{}, fmt.Errorf("not implemented")
 }
-
-func (n *noopUserRepo) UpdateLoginStats(ctx context.Context, user domain.User) error { return nil }
 
 func (n *noopUserRepo) Create(ctx context.Context, user domain.User) (domain.User, error) {
 	return user, fmt.Errorf("not implemented")

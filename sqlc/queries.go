@@ -3,6 +3,7 @@ package sqlc
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"time"
@@ -98,13 +99,16 @@ func (q *Queries) GetBranding(ctx context.Context, tenantID int64) (GetBrandingR
 
 // Auth provider rows.
 type ListAuthProvidersRow struct {
-	TenantID int64
-	Type     string
-	Name     string
-	Enabled  bool
+	ID               int64
+	TenantID         int64
+	ProviderType     string
+	ProviderConfigID sql.NullInt64
+	IsActive         bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-const listAuthProvidersSQL = `SELECT tenant_id, provider_type AS type, provider_type AS name, is_active AS enabled FROM tenant_auth_providers WHERE tenant_id = $1`
+const listAuthProvidersSQL = `SELECT id, tenant_id, provider_type, provider_config_id, is_active, created_at, updated_at FROM tenant_auth_providers WHERE tenant_id = $1`
 
 func (q *Queries) ListAuthProviders(ctx context.Context, tenantID int64) ([]ListAuthProvidersRow, error) {
 	rows, err := q.db.Query(ctx, listAuthProvidersSQL, tenantID)
@@ -116,7 +120,7 @@ func (q *Queries) ListAuthProviders(ctx context.Context, tenantID int64) ([]List
 	var res []ListAuthProvidersRow
 	for rows.Next() {
 		var r ListAuthProvidersRow
-		if err := rows.Scan(&r.TenantID, &r.Type, &r.Name, &r.Enabled); err != nil {
+		if err := rows.Scan(&r.ID, &r.TenantID, &r.ProviderType, &r.ProviderConfigID, &r.IsActive, &r.CreatedAt, &r.UpdatedAt); err != nil {
 			return nil, err
 		}
 		res = append(res, r)
@@ -126,35 +130,69 @@ func (q *Queries) ListAuthProviders(ctx context.Context, tenantID int64) ([]List
 
 // Password config row.
 type GetPasswordConfigRow struct {
-	TenantID        int64
-	Enabled         bool
-	MaxAttempts     int32
-	LockoutInterval time.Duration
+	TenantID               int64
+	MinLength              int32
+	RequireUppercase       bool
+	RequireNumber          bool
+	RequireSymbol          bool
+	AllowSignup            bool
+	AllowPasswordReset     bool
+	LockoutAttempts        int32
+	LockoutDurationSeconds int32
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
-const getPasswordConfigSQL = `SELECT tenant_id, enabled, max_attempts, lockout_interval FROM password_configs WHERE tenant_id = $1 LIMIT 1`
+const getPasswordConfigSQL = `SELECT tenant_id, min_length, require_uppercase, require_number, require_symbol, allow_signup, allow_password_reset, lockout_attempts, lockout_duration_seconds, created_at, updated_at FROM password_configs WHERE tenant_id = $1 LIMIT 1`
 
 func (q *Queries) GetPasswordConfig(ctx context.Context, tenantID int64) (GetPasswordConfigRow, error) {
 	row := q.db.QueryRow(ctx, getPasswordConfigSQL, tenantID)
 	var res GetPasswordConfigRow
-	err := row.Scan(&res.TenantID, &res.Enabled, &res.MaxAttempts, &res.LockoutInterval)
+	err := row.Scan(
+		&res.TenantID,
+		&res.MinLength,
+		&res.RequireUppercase,
+		&res.RequireNumber,
+		&res.RequireSymbol,
+		&res.AllowSignup,
+		&res.AllowPasswordReset,
+		&res.LockoutAttempts,
+		&res.LockoutDurationSeconds,
+		&res.CreatedAt,
+		&res.UpdatedAt,
+	)
 	return res, err
 }
 
 // OTP config row.
 type GetOTPConfigRow struct {
-	TenantID int64
-	Enabled  bool
-	Length   int32
-	TTL      time.Duration
+	TenantID      int64
+	Channel       string
+	Provider      string
+	APIKey        sql.NullString
+	Sender        sql.NullString
+	Template      sql.NullString
+	ExpirySeconds int32
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
-const getOTPConfigSQL = `SELECT tenant_id, enabled, length, ttl FROM otp_configs WHERE tenant_id = $1 LIMIT 1`
+const getOTPConfigSQL = `SELECT tenant_id, channel, provider, api_key, sender, template, expiry_seconds, created_at, updated_at FROM otp_configs WHERE tenant_id = $1 LIMIT 1`
 
 func (q *Queries) GetOTPConfig(ctx context.Context, tenantID int64) (GetOTPConfigRow, error) {
 	row := q.db.QueryRow(ctx, getOTPConfigSQL, tenantID)
 	var res GetOTPConfigRow
-	err := row.Scan(&res.TenantID, &res.Enabled, &res.Length, &res.TTL)
+	err := row.Scan(
+		&res.TenantID,
+		&res.Channel,
+		&res.Provider,
+		&res.APIKey,
+		&res.Sender,
+		&res.Template,
+		&res.ExpirySeconds,
+		&res.CreatedAt,
+		&res.UpdatedAt,
+	)
 	return res, err
 }
 
@@ -164,14 +202,18 @@ type ListOAuthIDPConfigsRow struct {
 	Provider         string
 	ClientID         string
 	ClientSecret     string
-	RedirectURI      string
-	Enabled          bool
-	Scopes           []string
-	DisplayName      string
+	IssuerURL        string
 	AuthorizationURL string
+	TokenURL         string
+	UserinfoURL      string
+	JWKSURL          string
+	Scopes           []string
+	Extra            []byte
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-const listOAuthIDPConfigsSQL = `SELECT tenant_id, provider, client_id, client_secret, redirect_uri, enabled, scopes, display_name, authorization_url FROM oauth_idp_configs WHERE tenant_id = $1`
+const listOAuthIDPConfigsSQL = `SELECT tenant_id, provider, client_id, client_secret, issuer_url, authorization_url, token_url, userinfo_url, jwks_url, scopes, extra, created_at, updated_at FROM oauth_idp_configs WHERE tenant_id = $1`
 
 func (q *Queries) ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]ListOAuthIDPConfigsRow, error) {
 	rows, err := q.db.Query(ctx, listOAuthIDPConfigsSQL, tenantID)
@@ -184,7 +226,21 @@ func (q *Queries) ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]Li
 	for rows.Next() {
 		var r ListOAuthIDPConfigsRow
 		var scopes string
-		if err := rows.Scan(&r.TenantID, &r.Provider, &r.ClientID, &r.ClientSecret, &r.RedirectURI, &r.Enabled, &scopes, &r.DisplayName, &r.AuthorizationURL); err != nil {
+		if err := rows.Scan(
+			&r.TenantID,
+			&r.Provider,
+			&r.ClientID,
+			&r.ClientSecret,
+			&r.IssuerURL,
+			&r.AuthorizationURL,
+			&r.TokenURL,
+			&r.UserinfoURL,
+			&r.JWKSURL,
+			&scopes,
+			&r.Extra,
+			&r.CreatedAt,
+			&r.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		if scopes != "" {
@@ -197,78 +253,105 @@ func (q *Queries) ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]Li
 
 // User row.
 type GetUserByEmailRow struct {
-	ID             int64
-	TenantID       int64
-	Email          string
-	PasswordHash   string
-	Name           string
-	PictureURL     string
-	Blocked        bool
-	FailedAttempts int32
-	LockedUntil    time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID            int64
+	TenantID      int64
+	Email         string
+	EmailVerified bool
+	PasswordHash  string
+	Name          string
+	Phone         string
+	PhoneVerified bool
+	AvatarURL     sql.NullString
+	Status        string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
-const getUserByEmailSQL = `SELECT id, tenant_id, email, password_hash, name, picture_url, blocked, failed_attempts, locked_until, created_at, updated_at FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1`
+const getUserByEmailSQL = `SELECT id, tenant_id, email, email_verified, password_hash, name, phone, phone_verified, avatar_url, status, created_at, updated_at FROM users WHERE tenant_id = $1 AND email = $2 LIMIT 1`
 
 func (q *Queries) GetUserByEmail(ctx context.Context, tenantID int64, email string) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByEmailSQL, tenantID, email)
 	var res GetUserByEmailRow
-	err := row.Scan(&res.ID, &res.TenantID, &res.Email, &res.PasswordHash, &res.Name, &res.PictureURL, &res.Blocked, &res.FailedAttempts, &res.LockedUntil, &res.CreatedAt, &res.UpdatedAt)
+	err := row.Scan(
+		&res.ID,
+		&res.TenantID,
+		&res.Email,
+		&res.EmailVerified,
+		&res.PasswordHash,
+		&res.Name,
+		&res.Phone,
+		&res.PhoneVerified,
+		&res.AvatarURL,
+		&res.Status,
+		&res.CreatedAt,
+		&res.UpdatedAt,
+	)
 	return res, err
 }
 
-const getUserByIDSQL = `SELECT id, tenant_id, email, password_hash, name, picture_url, blocked, failed_attempts, locked_until, created_at, updated_at FROM users WHERE tenant_id = $1 AND id = $2 LIMIT 1`
+const getUserByIDSQL = `SELECT id, tenant_id, email, email_verified, password_hash, name, phone, phone_verified, avatar_url, status, created_at, updated_at FROM users WHERE tenant_id = $1 AND id = $2 LIMIT 1`
 
 func (q *Queries) GetUserByID(ctx context.Context, tenantID, userID int64) (GetUserByEmailRow, error) {
 	row := q.db.QueryRow(ctx, getUserByIDSQL, tenantID, userID)
 	var res GetUserByEmailRow
-	err := row.Scan(&res.ID, &res.TenantID, &res.Email, &res.PasswordHash, &res.Name, &res.PictureURL, &res.Blocked, &res.FailedAttempts, &res.LockedUntil, &res.CreatedAt, &res.UpdatedAt)
+	err := row.Scan(
+		&res.ID,
+		&res.TenantID,
+		&res.Email,
+		&res.EmailVerified,
+		&res.PasswordHash,
+		&res.Name,
+		&res.Phone,
+		&res.PhoneVerified,
+		&res.AvatarURL,
+		&res.Status,
+		&res.CreatedAt,
+		&res.UpdatedAt,
+	)
 	return res, err
-}
-
-const updateUserLoginStatsSQL = `UPDATE users SET failed_attempts = $2, locked_until = $3, updated_at = NOW() WHERE id = $1`
-
-func (q *Queries) UpdateUserLoginStats(ctx context.Context, id int64, failed int32, lockedUntil time.Time) error {
-	_, err := q.db.Exec(ctx, updateUserLoginStatsSQL, id, failed, lockedUntil)
-	return err
 }
 
 // OAuth token rows.
 type InsertOAuthTokenRow struct {
-	ID            int64
-	TenantID      int64
-	UserID        int64
-	ClientID      string
-	Scope         string
-	RefreshToken  string
-	AccessTokenID string
-	CreatedAt     time.Time
-	ExpiresAt     time.Time
-	RotatedAt     time.Time
-	Revoked       bool
+	ID           int64
+	TenantID     int64
+	ClientID     string
+	UserID       int64
+	AccessToken  string
+	RefreshToken sql.NullString
+	Scopes       []string
+	ExpiresAt    time.Time
+	Revoked      bool
+	CreatedAt    time.Time
 }
 
-const insertOAuthTokenSQL = `INSERT INTO oauth_tokens (tenant_id, user_id, client_id, scope, refresh_token, access_token_id, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, user_id, client_id, scope, refresh_token, access_token_id, created_at, expires_at, rotated_at, revoked`
+const insertOAuthTokenSQL = `INSERT INTO oauth_tokens (tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at`
 
-func (q *Queries) InsertOAuthToken(ctx context.Context, tenantID, userID int64, clientID, scope, refreshToken, accessTokenID string, expiresAt time.Time) (InsertOAuthTokenRow, error) {
-	row := q.db.QueryRow(ctx, insertOAuthTokenSQL, tenantID, userID, clientID, scope, refreshToken, accessTokenID, expiresAt)
+func (q *Queries) InsertOAuthToken(ctx context.Context, tenantID int64, clientID string, userID int64, accessToken string, refreshToken sql.NullString, scopes string, expiresAt time.Time) (InsertOAuthTokenRow, error) {
+	row := q.db.QueryRow(ctx, insertOAuthTokenSQL, tenantID, clientID, userID, accessToken, refreshToken, scopes, expiresAt)
 	var res InsertOAuthTokenRow
-	err := row.Scan(&res.ID, &res.TenantID, &res.UserID, &res.ClientID, &res.Scope, &res.RefreshToken, &res.AccessTokenID, &res.CreatedAt, &res.ExpiresAt, &res.RotatedAt, &res.Revoked)
+	var scopeList string
+	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &scopeList, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
+	if scopeList != "" {
+		res.Scopes = strings.Split(scopeList, ",")
+	}
 	return res, err
 }
 
-const getOAuthTokenByRefreshSQL = `SELECT id, tenant_id, user_id, client_id, scope, refresh_token, access_token_id, created_at, expires_at, rotated_at, revoked FROM oauth_tokens WHERE tenant_id = $1 AND refresh_token = $2 LIMIT 1`
+const getOAuthTokenByRefreshSQL = `SELECT id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at FROM oauth_tokens WHERE tenant_id = $1 AND refresh_token = $2 LIMIT 1`
 
 func (q *Queries) GetOAuthTokenByRefresh(ctx context.Context, tenantID int64, refreshToken string) (InsertOAuthTokenRow, error) {
 	row := q.db.QueryRow(ctx, getOAuthTokenByRefreshSQL, tenantID, refreshToken)
 	var res InsertOAuthTokenRow
-	err := row.Scan(&res.ID, &res.TenantID, &res.UserID, &res.ClientID, &res.Scope, &res.RefreshToken, &res.AccessTokenID, &res.CreatedAt, &res.ExpiresAt, &res.RotatedAt, &res.Revoked)
+	var scopeList string
+	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &scopeList, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
+	if scopeList != "" {
+		res.Scopes = strings.Split(scopeList, ",")
+	}
 	return res, err
 }
 
-const rotateRefreshTokenSQL = `UPDATE oauth_tokens SET refresh_token = $2, expires_at = $3, rotated_at = NOW() WHERE id = $1`
+const rotateRefreshTokenSQL = `UPDATE oauth_tokens SET refresh_token = $2, expires_at = $3 WHERE id = $1`
 
 func (q *Queries) RotateRefreshToken(ctx context.Context, id int64, refreshToken string, expiresAt time.Time) error {
 	_, err := q.db.Exec(ctx, rotateRefreshTokenSQL, id, refreshToken, expiresAt)
@@ -284,36 +367,51 @@ func (q *Queries) RevokeOAuthToken(ctx context.Context, id int64) error {
 
 // OAuth code rows.
 type GetOAuthCodeRow struct {
-	Code        string
-	TenantID    int64
-	UserID      int64
-	ClientID    string
-	RedirectURI string
-	Scope       string
-	ExpiresAt   time.Time
-	Used        bool
+	ID                  int64
+	TenantID            int64
+	ClientID            string
+	UserID              int64
+	Code                string
+	RedirectURI         string
+	CodeChallenge       sql.NullString
+	CodeChallengeMethod sql.NullString
+	ExpiresAt           time.Time
+	Revoked             bool
+	CreatedAt           time.Time
 }
 
-const insertOAuthCodeSQL = `INSERT INTO oauth_codes (code, tenant_id, user_id, client_id, redirect_uri, scope, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`
+const insertOAuthCodeSQL = `INSERT INTO oauth_codes (id, tenant_id, client_id, user_id, code, redirect_uri, code_challenge, code_challenge_method, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
 
-func (q *Queries) InsertOAuthCode(ctx context.Context, code string, tenantID, userID int64, clientID, redirectURI, scope string, expiresAt time.Time) error {
-	_, err := q.db.Exec(ctx, insertOAuthCodeSQL, code, tenantID, userID, clientID, redirectURI, scope, expiresAt)
+func (q *Queries) InsertOAuthCode(ctx context.Context, id, tenantID int64, clientID string, userID int64, code, redirectURI string, codeChallenge sql.NullString, codeChallengeMethod sql.NullString, expiresAt time.Time) error {
+	_, err := q.db.Exec(ctx, insertOAuthCodeSQL, id, tenantID, clientID, userID, code, redirectURI, codeChallenge, codeChallengeMethod, expiresAt)
 	return err
 }
 
-const getOAuthCodeSQL = `SELECT code, tenant_id, user_id, client_id, redirect_uri, scope, expires_at, used FROM oauth_codes WHERE tenant_id = $1 AND code = $2 LIMIT 1`
+const getOAuthCodeSQL = `SELECT id, tenant_id, client_id, user_id, code, redirect_uri, code_challenge, code_challenge_method, expires_at, revoked, created_at FROM oauth_codes WHERE tenant_id = $1 AND code = $2 LIMIT 1`
 
 func (q *Queries) GetOAuthCode(ctx context.Context, tenantID int64, code string) (GetOAuthCodeRow, error) {
 	row := q.db.QueryRow(ctx, getOAuthCodeSQL, tenantID, code)
 	var res GetOAuthCodeRow
-	err := row.Scan(&res.Code, &res.TenantID, &res.UserID, &res.ClientID, &res.RedirectURI, &res.Scope, &res.ExpiresAt, &res.Used)
+	err := row.Scan(
+		&res.ID,
+		&res.TenantID,
+		&res.ClientID,
+		&res.UserID,
+		&res.Code,
+		&res.RedirectURI,
+		&res.CodeChallenge,
+		&res.CodeChallengeMethod,
+		&res.ExpiresAt,
+		&res.Revoked,
+		&res.CreatedAt,
+	)
 	return res, err
 }
 
-const markOAuthCodeUsedSQL = `UPDATE oauth_codes SET used = true WHERE code = $1`
+const revokeOAuthCodeSQL = `UPDATE oauth_codes SET revoked = true WHERE code = $1`
 
-func (q *Queries) MarkOAuthCodeUsed(ctx context.Context, code string) error {
-	_, err := q.db.Exec(ctx, markOAuthCodeUsedSQL, code)
+func (q *Queries) RevokeOAuthCode(ctx context.Context, code string) error {
+	_, err := q.db.Exec(ctx, revokeOAuthCodeSQL, code)
 	return err
 }
 
@@ -324,27 +422,28 @@ type GetActiveOAuthKeyRow struct {
 	KID       string
 	Secret    []byte
 	Algorithm string
-	Active    bool
+	IsActive  bool
 	CreatedAt time.Time
+	RotatedAt sql.NullTime
 }
 
-const getActiveOAuthKeySQL = `SELECT id, tenant_id, kid, secret, algorithm, active, created_at FROM oauth_keys WHERE tenant_id = $1 AND active = true ORDER BY created_at DESC LIMIT 1`
+const getActiveOAuthKeySQL = `SELECT id, tenant_id, kid, secret, algorithm, is_active, created_at, rotated_at FROM oauth_keys WHERE tenant_id = $1 AND is_active = true ORDER BY created_at DESC LIMIT 1`
 
 func (q *Queries) GetActiveOAuthKey(ctx context.Context, tenantID int64) (GetActiveOAuthKeyRow, error) {
 	row := q.db.QueryRow(ctx, getActiveOAuthKeySQL, tenantID)
 	var res GetActiveOAuthKeyRow
-	err := row.Scan(&res.ID, &res.TenantID, &res.KID, &res.Secret, &res.Algorithm, &res.Active, &res.CreatedAt)
+	err := row.Scan(&res.ID, &res.TenantID, &res.KID, &res.Secret, &res.Algorithm, &res.IsActive, &res.CreatedAt, &res.RotatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return res, err
 	}
 	return res, err
 }
 
-const insertOAuthKeySQL = `INSERT INTO oauth_keys (tenant_id, kid, secret, algorithm, active) VALUES ($1,$2,$3,$4,true) RETURNING id, tenant_id, kid, secret, algorithm, active, created_at`
+const insertOAuthKeySQL = `INSERT INTO oauth_keys (tenant_id, kid, secret, algorithm, is_active) VALUES ($1,$2,$3,$4,true) RETURNING id, tenant_id, kid, secret, algorithm, is_active, created_at, rotated_at`
 
 func (q *Queries) InsertOAuthKey(ctx context.Context, tenantID int64, kid string, secret []byte, algorithm string) (GetActiveOAuthKeyRow, error) {
 	row := q.db.QueryRow(ctx, insertOAuthKeySQL, tenantID, kid, secret, algorithm)
 	var res GetActiveOAuthKeyRow
-	err := row.Scan(&res.ID, &res.TenantID, &res.KID, &res.Secret, &res.Algorithm, &res.Active, &res.CreatedAt)
+	err := row.Scan(&res.ID, &res.TenantID, &res.KID, &res.Secret, &res.Algorithm, &res.IsActive, &res.CreatedAt, &res.RotatedAt)
 	return res, err
 }

@@ -37,9 +37,9 @@ func TestPasswordGrantAndRefreshFlow(t *testing.T) {
 	tenantCtx := &tenant.Context{
 		Tenant:         domain.Tenant{ID: 1, Name: "Tenant A", Code: "client"},
 		ClientID:       "client",
-		PasswordConfig: domain.PasswordConfig{Enabled: true, MaxAttempts: 5},
-		AuthProviders:  []domain.AuthProvider{{Type: "password", Enabled: true}},
-		OTPConfig:      domain.OTPConfig{Enabled: true, Length: 6, Ttl: time.Minute},
+		PasswordConfig: domain.PasswordConfig{TenantID: 1, MinLength: 8, LockoutAttempts: 5, LockoutDurationSeconds: 300},
+		AuthProviders:  []domain.AuthProvider{{ProviderType: "password", IsActive: true}},
+		OTPConfig:      domain.OTPConfig{TenantID: 1, Channel: "sms", ExpirySeconds: 300},
 	}
 
 	tokenResp, err := authService.PasswordGrant(ctx, tenantCtx, user.Email, "password", "openid", "https://tenant")
@@ -78,11 +78,6 @@ func (m *memoryUserRepo) GetByEmail(ctx context.Context, tenantID int64, email s
 
 func (m *memoryUserRepo) GetByID(ctx context.Context, tenantID, userID int64) (domain.User, error) {
 	return m.user, nil
-}
-
-func (m *memoryUserRepo) UpdateLoginStats(ctx context.Context, user domain.User) error {
-	m.user = user
-	return nil
 }
 
 func (m *memoryUserRepo) Create(ctx context.Context, user domain.User) (domain.User, error) {

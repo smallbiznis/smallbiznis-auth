@@ -63,10 +63,6 @@ type AuthProvider struct {
 	IsActive         bool
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
-	// Legacy fields kept for compatibility with existing service code.
-	Type    string
-	Name    string
-	Enabled bool
 }
 
 // PasswordConfig controls password login policy per tenant.
@@ -82,10 +78,6 @@ type PasswordConfig struct {
 	LockoutDurationSeconds int
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
-	// Legacy fields retained for compatibility.
-	Enabled         bool
-	MaxAttempts     int
-	LockoutInterval time.Duration
 }
 
 // OTPConfig holds OTP login policy per tenant.
@@ -99,10 +91,6 @@ type OTPConfig struct {
 	ExpirySeconds int
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
-	// Backward compatible fields used by the current service flows.
-	Enabled bool
-	Length  int
-	Ttl     time.Duration
 }
 
 // OAuthIDPConfig stores social login configuration.
@@ -120,9 +108,4 @@ type OAuthIDPConfig struct {
 	Extra            map[string]any
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
-	// Legacy fields retained for compatibility with existing consumers.
-	RedirectURI   string
-	Enabled       bool
-	DisplayName   string
-	Authorization string
 }

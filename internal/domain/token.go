@@ -4,35 +4,31 @@ import "time"
 
 // OAuthToken persists refresh tokens.
 type OAuthToken struct {
-	ID            int64
-	TenantID      int64
-	UserID        int64
-	ClientID      string
-	AccessToken   string
-	Scope         string
-	Scopes        []string
-	RefreshToken  string
-	AccessTokenID string
-	CreatedAt     time.Time
-	ExpiresAt     time.Time
-	RotatedAt     time.Time
-	Revoked       bool
+	ID           int64
+	TenantID     int64
+	ClientID     string
+	UserID       int64
+	AccessToken  string
+	RefreshToken string
+	Scopes       []string
+	ExpiresAt    time.Time
+	Revoked      bool
+	CreatedAt    time.Time
 }
 
 // OAuthCode models short-lived authorization codes.
 type OAuthCode struct {
-	Code                string
+	ID                  int64
 	TenantID            int64
-	UserID              int64
 	ClientID            string
+	UserID              int64
+	Code                string
 	RedirectURI         string
-	Scope               string
 	CodeChallenge       string
 	CodeChallengeMethod string
 	ExpiresAt           time.Time
 	Revoked             bool
 	CreatedAt           time.Time
-	Used                bool
 }
 
 // OAuthKey stores per-tenant signing keys.
@@ -42,7 +38,7 @@ type OAuthKey struct {
 	KID       string
 	Secret    []byte
 	Algorithm string
-	Active    bool
+	IsActive  bool
 	CreatedAt time.Time
 	RotatedAt *time.Time
 }

@@ -1,12 +1,12 @@
 -- name: InsertOAuthToken :one
 INSERT INTO oauth_tokens (
-    tenant_id, user_id, client_id, scope, refresh_token, access_token_id, expires_at
+    tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7
-) RETURNING id, tenant_id, user_id, client_id, scope, refresh_token, access_token_id, created_at, expires_at, rotated_at, revoked;
+) RETURNING id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at;
 
 -- name: GetOAuthTokenByRefresh :one
-SELECT id, tenant_id, user_id, client_id, scope, refresh_token, access_token_id, created_at, expires_at, rotated_at, revoked
+SELECT id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at
 FROM oauth_tokens
 WHERE tenant_id = $1 AND refresh_token = $2
 LIMIT 1;
@@ -14,8 +14,7 @@ LIMIT 1;
 -- name: RotateRefreshToken :exec
 UPDATE oauth_tokens
 SET refresh_token = $2,
-    expires_at = $3,
-    rotated_at = NOW()
+    expires_at = $3
 WHERE id = $1;
 
 -- name: RevokeOAuthToken :exec

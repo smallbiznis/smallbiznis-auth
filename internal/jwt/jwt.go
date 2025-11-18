@@ -59,7 +59,7 @@ func (g *Generator) GenerateAccessToken(ctx context.Context, tenant domain.Tenan
 		Scope:     scope,
 		Email:     user.Email,
 		Name:      user.Name,
-		Picture:   user.PictureURL,
+		Picture:   user.AvatarURL,
 		Providers: providers,
 	}
 

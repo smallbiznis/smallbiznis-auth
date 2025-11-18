@@ -2,7 +2,10 @@ package repository
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -72,7 +75,20 @@ func (r *PostgresTenantRepo) ListAuthProviders(ctx context.Context, tenantID int
 	}
 	providers := make([]domain.AuthProvider, 0, len(rows))
 	for _, row := range rows {
-		providers = append(providers, domain.AuthProvider{TenantID: row.TenantID, Type: row.Type, Name: row.Name, Enabled: row.Enabled})
+		var configID *int64
+		if row.ProviderConfigID.Valid {
+			val := row.ProviderConfigID.Int64
+			configID = &val
+		}
+		providers = append(providers, domain.AuthProvider{
+			ID:               row.ID,
+			TenantID:         row.TenantID,
+			ProviderType:     row.ProviderType,
+			ProviderConfigID: configID,
+			IsActive:         row.IsActive,
+			CreatedAt:        row.CreatedAt,
+			UpdatedAt:        row.UpdatedAt,
+		})
 	}
 	return providers, nil
 }
@@ -82,7 +98,19 @@ func (r *PostgresTenantRepo) GetPasswordConfig(ctx context.Context, tenantID int
 	if err != nil {
 		return domain.PasswordConfig{}, fmt.Errorf("get password config: %w", err)
 	}
-	return domain.PasswordConfig{TenantID: row.TenantID, Enabled: row.Enabled, MaxAttempts: int(row.MaxAttempts), LockoutInterval: row.LockoutInterval}, nil
+	return domain.PasswordConfig{
+		TenantID:               row.TenantID,
+		MinLength:              int(row.MinLength),
+		RequireUppercase:       row.RequireUppercase,
+		RequireNumber:          row.RequireNumber,
+		RequireSymbol:          row.RequireSymbol,
+		AllowSignup:            row.AllowSignup,
+		AllowPasswordReset:     row.AllowPasswordReset,
+		LockoutAttempts:        int(row.LockoutAttempts),
+		LockoutDurationSeconds: int(row.LockoutDurationSeconds),
+		CreatedAt:              row.CreatedAt,
+		UpdatedAt:              row.UpdatedAt,
+	}, nil
 }
 
 func (r *PostgresTenantRepo) GetOTPConfig(ctx context.Context, tenantID int64) (domain.OTPConfig, error) {
@@ -90,7 +118,17 @@ func (r *PostgresTenantRepo) GetOTPConfig(ctx context.Context, tenantID int64) (
 	if err != nil {
 		return domain.OTPConfig{}, fmt.Errorf("get otp config: %w", err)
 	}
-	return domain.OTPConfig{TenantID: row.TenantID, Enabled: row.Enabled, Length: int(row.Length), Ttl: row.TTL}, nil
+	return domain.OTPConfig{
+		TenantID:      row.TenantID,
+		Channel:       row.Channel,
+		Provider:      row.Provider,
+		APIKey:        row.APIKey.String,
+		Sender:        row.Sender.String,
+		Template:      row.Template.String,
+		ExpirySeconds: int(row.ExpirySeconds),
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
+	}, nil
 }
 
 func (r *PostgresTenantRepo) ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]domain.OAuthIDPConfig, error) {
@@ -100,16 +138,28 @@ func (r *PostgresTenantRepo) ListOAuthIDPConfigs(ctx context.Context, tenantID i
 	}
 	res := make([]domain.OAuthIDPConfig, 0, len(rows))
 	for _, row := range rows {
+		var scopes []string
+		if len(row.Scopes) > 0 {
+			scopes = row.Scopes
+		}
+		extra := map[string]any{}
+		if len(row.Extra) > 0 {
+			_ = json.Unmarshal(row.Extra, &extra)
+		}
 		res = append(res, domain.OAuthIDPConfig{
-			TenantID:      row.TenantID,
-			Provider:      row.Provider,
-			ClientID:      row.ClientID,
-			ClientSecret:  row.ClientSecret,
-			RedirectURI:   row.RedirectURI,
-			Enabled:       row.Enabled,
-			Scopes:        row.Scopes,
-			DisplayName:   row.DisplayName,
-			Authorization: row.AuthorizationURL,
+			TenantID:         row.TenantID,
+			Provider:         row.Provider,
+			ClientID:         row.ClientID,
+			ClientSecret:     row.ClientSecret,
+			IssuerURL:        row.IssuerURL,
+			AuthorizationURL: row.AuthorizationURL,
+			TokenURL:         row.TokenURL,
+			UserinfoURL:      row.UserinfoURL,
+			JWKSURL:          row.JWKSURL,
+			Scopes:           scopes,
+			Extra:            extra,
+			CreatedAt:        row.CreatedAt,
+			UpdatedAt:        row.UpdatedAt,
 		})
 	}
 	return res, nil
@@ -141,29 +191,21 @@ func (r *PostgresUserRepo) GetByID(ctx context.Context, tenantID, userID int64) 
 	return mapUserRow(row), nil
 }
 
-func (r *PostgresUserRepo) UpdateLoginStats(ctx context.Context, user domain.User) error {
-	if err := r.q.UpdateUserLoginStats(ctx, user.ID, int32(user.FailedAttempts), user.LockedUntil); err != nil {
-		return fmt.Errorf("update login stats: %w", err)
-	}
-	return nil
-}
-
-const insertUserSQL = `INSERT INTO users (tenant_id, email, password_hash, name, picture_url, blocked, failed_attempts, locked_until)
-VALUES ($1, $2, $3, $4, $5, false, 0, $6)
-RETURNING id, tenant_id, email, password_hash, name, picture_url, blocked, failed_attempts, locked_until, created_at, updated_at`
+const insertUserSQL = `INSERT INTO users (tenant_id, email, email_verified, password_hash, name, phone, phone_verified, avatar_url, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, tenant_id, email, email_verified, password_hash, name, phone, phone_verified, avatar_url, status, created_at, updated_at`
 
 func (r *PostgresUserRepo) Create(ctx context.Context, user domain.User) (domain.User, error) {
-	locked := user.LockedUntil
-	if locked.IsZero() {
-		locked = time.Unix(0, 0).UTC()
-	}
 	row := r.db.QueryRow(ctx, insertUserSQL,
 		user.TenantID,
 		user.Email,
+		user.EmailVerified,
 		user.PasswordHash,
 		user.Name,
-		user.PictureURL,
-		locked,
+		user.Phone,
+		user.PhoneVerified,
+		user.AvatarURL,
+		user.Status,
 	)
 
 	var inserted sqlc.GetUserByEmailRow
@@ -171,12 +213,13 @@ func (r *PostgresUserRepo) Create(ctx context.Context, user domain.User) (domain
 		&inserted.ID,
 		&inserted.TenantID,
 		&inserted.Email,
+		&inserted.EmailVerified,
 		&inserted.PasswordHash,
 		&inserted.Name,
-		&inserted.PictureURL,
-		&inserted.Blocked,
-		&inserted.FailedAttempts,
-		&inserted.LockedUntil,
+		&inserted.Phone,
+		&inserted.PhoneVerified,
+		&inserted.AvatarURL,
+		&inserted.Status,
 		&inserted.CreatedAt,
 		&inserted.UpdatedAt,
 	); err != nil {
@@ -196,23 +239,15 @@ func NewPostgresTokenRepo(q *sqlc.Queries) *PostgresTokenRepo {
 }
 
 func (r *PostgresTokenRepo) CreateToken(ctx context.Context, token domain.OAuthToken) (domain.OAuthToken, error) {
-	row, err := r.q.InsertOAuthToken(ctx, token.TenantID, token.UserID, token.ClientID, token.Scope, token.RefreshToken, token.AccessTokenID, token.ExpiresAt)
+	refresh := sql.NullString{}
+	if token.RefreshToken != "" {
+		refresh = sql.NullString{String: token.RefreshToken, Valid: true}
+	}
+	row, err := r.q.InsertOAuthToken(ctx, token.TenantID, token.ClientID, token.UserID, token.AccessToken, refresh, strings.Join(token.Scopes, ","), token.ExpiresAt)
 	if err != nil {
 		return domain.OAuthToken{}, fmt.Errorf("insert token: %w", err)
 	}
-	return domain.OAuthToken{
-		ID:            row.ID,
-		TenantID:      row.TenantID,
-		UserID:        row.UserID,
-		ClientID:      row.ClientID,
-		Scope:         row.Scope,
-		RefreshToken:  row.RefreshToken,
-		AccessTokenID: row.AccessTokenID,
-		CreatedAt:     row.CreatedAt,
-		ExpiresAt:     row.ExpiresAt,
-		RotatedAt:     row.RotatedAt,
-		Revoked:       row.Revoked,
-	}, nil
+	return mapTokenRow(row), nil
 }
 
 func (r *PostgresTokenRepo) GetByRefreshToken(ctx context.Context, tenantID int64, token string) (domain.OAuthToken, error) {
@@ -220,19 +255,7 @@ func (r *PostgresTokenRepo) GetByRefreshToken(ctx context.Context, tenantID int6
 	if err != nil {
 		return domain.OAuthToken{}, fmt.Errorf("get refresh token: %w", err)
 	}
-	return domain.OAuthToken{
-		ID:            row.ID,
-		TenantID:      row.TenantID,
-		UserID:        row.UserID,
-		ClientID:      row.ClientID,
-		Scope:         row.Scope,
-		RefreshToken:  row.RefreshToken,
-		AccessTokenID: row.AccessTokenID,
-		CreatedAt:     row.CreatedAt,
-		ExpiresAt:     row.ExpiresAt,
-		RotatedAt:     row.RotatedAt,
-		Revoked:       row.Revoked,
-	}, nil
+	return mapTokenRow(row), nil
 }
 
 func (r *PostgresTokenRepo) RotateRefreshToken(ctx context.Context, tokenID int64, refreshToken string, expiresAt int64) error {
@@ -259,7 +282,15 @@ func NewPostgresCodeRepo(q *sqlc.Queries) *PostgresCodeRepo {
 }
 
 func (r *PostgresCodeRepo) CreateCode(ctx context.Context, code domain.OAuthCode) error {
-	if err := r.q.InsertOAuthCode(ctx, code.Code, code.TenantID, code.UserID, code.ClientID, code.RedirectURI, code.Scope, code.ExpiresAt); err != nil {
+	var challenge sql.NullString
+	if code.CodeChallenge != "" {
+		challenge = sql.NullString{String: code.CodeChallenge, Valid: true}
+	}
+	var challengeMethod sql.NullString
+	if code.CodeChallengeMethod != "" {
+		challengeMethod = sql.NullString{String: code.CodeChallengeMethod, Valid: true}
+	}
+	if err := r.q.InsertOAuthCode(ctx, code.ID, code.TenantID, code.ClientID, code.UserID, code.Code, code.RedirectURI, challenge, challengeMethod, code.ExpiresAt); err != nil {
 		return fmt.Errorf("insert code: %w", err)
 	}
 	return nil
@@ -271,20 +302,23 @@ func (r *PostgresCodeRepo) GetCode(ctx context.Context, tenantID int64, code str
 		return domain.OAuthCode{}, fmt.Errorf("get code: %w", err)
 	}
 	return domain.OAuthCode{
-		Code:        row.Code,
-		TenantID:    row.TenantID,
-		UserID:      row.UserID,
-		ClientID:    row.ClientID,
-		RedirectURI: row.RedirectURI,
-		Scope:       row.Scope,
-		ExpiresAt:   row.ExpiresAt,
-		Used:        row.Used,
+		ID:                  row.ID,
+		TenantID:            row.TenantID,
+		ClientID:            row.ClientID,
+		UserID:              row.UserID,
+		Code:                row.Code,
+		RedirectURI:         row.RedirectURI,
+		CodeChallenge:       row.CodeChallenge.String,
+		CodeChallengeMethod: row.CodeChallengeMethod.String,
+		ExpiresAt:           row.ExpiresAt,
+		Revoked:             row.Revoked,
+		CreatedAt:           row.CreatedAt,
 	}, nil
 }
 
 func (r *PostgresCodeRepo) MarkCodeUsed(ctx context.Context, code string) error {
-	if err := r.q.MarkOAuthCodeUsed(ctx, code); err != nil {
-		return fmt.Errorf("mark code used: %w", err)
+	if err := r.q.RevokeOAuthCode(ctx, code); err != nil {
+		return fmt.Errorf("revoke code: %w", err)
 	}
 	return nil
 }
@@ -312,7 +346,7 @@ func (r *PostgresKeyRepo) CreateKey(ctx context.Context, key domain.OAuthKey) (d
 		return domain.OAuthKey{}, fmt.Errorf("insert key: %w", err)
 	}
 	mapped := mapKeyRow(row)
-	mapped.Active = true
+	mapped.IsActive = true
 	return mapped, nil
 }
 
@@ -323,23 +357,52 @@ func mapKeyRow(row sqlc.GetActiveOAuthKeyRow) domain.OAuthKey {
 		KID:       row.KID,
 		Secret:    row.Secret,
 		Algorithm: row.Algorithm,
-		Active:    row.Active,
+		IsActive:  row.IsActive,
 		CreatedAt: row.CreatedAt,
+		RotatedAt: nullableTime(row.RotatedAt),
 	}
 }
 
+func mapTokenRow(row sqlc.InsertOAuthTokenRow) domain.OAuthToken {
+	scopes := row.Scopes
+	return domain.OAuthToken{
+		ID:           row.ID,
+		TenantID:     row.TenantID,
+		ClientID:     row.ClientID,
+		UserID:       row.UserID,
+		AccessToken:  row.AccessToken,
+		RefreshToken: row.RefreshToken.String,
+		Scopes:       scopes,
+		ExpiresAt:    row.ExpiresAt,
+		Revoked:      row.Revoked,
+		CreatedAt:    row.CreatedAt,
+	}
+}
+
+func nullableTime(t sql.NullTime) *time.Time {
+	if t.Valid {
+		return &t.Time
+	}
+	return nil
+}
+
 func mapUserRow(row sqlc.GetUserByEmailRow) domain.User {
+	avatar := ""
+	if row.AvatarURL.Valid {
+		avatar = row.AvatarURL.String
+	}
 	return domain.User{
-		ID:             row.ID,
-		TenantID:       row.TenantID,
-		Email:          row.Email,
-		PasswordHash:   row.PasswordHash,
-		Name:           row.Name,
-		PictureURL:     row.PictureURL,
-		Blocked:        row.Blocked,
-		FailedAttempts: int(row.FailedAttempts),
-		LockedUntil:    row.LockedUntil,
-		CreatedAt:      row.CreatedAt,
-		UpdatedAt:      row.UpdatedAt,
+		ID:            row.ID,
+		TenantID:      row.TenantID,
+		Email:         row.Email,
+		EmailVerified: row.EmailVerified,
+		PasswordHash:  row.PasswordHash,
+		Name:          row.Name,
+		Phone:         row.Phone,
+		PhoneVerified: row.PhoneVerified,
+		AvatarURL:     avatar,
+		Status:        row.Status,
+		CreatedAt:     row.CreatedAt,
+		UpdatedAt:     row.UpdatedAt,
 	}
 }
