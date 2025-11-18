@@ -1,3 +1,11 @@
+## [1.0.1](https://github.com/smallbiznis/smallbiznis-auth/compare/v1.0.0...v1.0.1) (2025-11-18)
+
+
+### Bug Fixes
+
+* Dockerfile ([eda2f04](https://github.com/smallbiznis/smallbiznis-auth/commit/eda2f044c7b09272a084eb0b7d3b0f5d20a86358))
+* query ListOAuthIDPConfigs ([2cf602d](https://github.com/smallbiznis/smallbiznis-auth/commit/2cf602ddeed29d8a4a73d25fe729900d91e7956d))
+
 # 1.0.0 (2025-11-18)
 
 
