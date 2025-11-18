@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -223,9 +224,11 @@ func (q *Queries) ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]Li
 	defer rows.Close()
 
 	var res []ListOAuthIDPConfigsRow
+
 	for rows.Next() {
 		var r ListOAuthIDPConfigsRow
-		var scopes string
+		var scopes []string // FIX: gunakan slice langsung
+
 		if err := rows.Scan(
 			&r.TenantID,
 			&r.Provider,
@@ -236,18 +239,19 @@ func (q *Queries) ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]Li
 			&r.TokenURL,
 			&r.UserinfoURL,
 			&r.JWKSURL,
-			&scopes,
+			&scopes, // FIX: scan ke []string
 			&r.Extra,
 			&r.CreatedAt,
 			&r.UpdatedAt,
 		); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan idp: %w", err)
 		}
-		if scopes != "" {
-			r.Scopes = strings.Split(scopes, ",")
-		}
+
+		r.Scopes = scopes
+
 		res = append(res, r)
 	}
+
 	return res, rows.Err()
 }
 
