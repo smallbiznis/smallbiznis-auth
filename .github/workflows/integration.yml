@@ -22,8 +22,8 @@ jobs:
           - 5432:5432
         options: >-
           --health-cmd="pg_isready -U postgres -d smallbiznis_auth"
-          --health-interval=5s
-          --health-timeout=5s
+          --health-interval=3s
+          --health-timeout=3s
           --health-retries=10
 
     steps:
@@ -42,36 +42,22 @@ jobs:
             ~/go/pkg/mod
             ~/.cache/go-build
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
 
-      - name: Install PostgreSQL client
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client
+      - name: Wait for Postgres (built-in health)
+        run: psql -h localhost -U postgres -d smallbiznis_auth -c "SELECT 1;" || exit 1
+        env:
+          PGPASSWORD: postgres
 
-      - name: Wait for database
-        run: |
-          echo "Waiting for Postgres..."
-          for i in {1..20}; do
-            pg_isready -h localhost -p 5432 -U postgres -d smallbiznis_auth && break
-            sleep 2
-          done
-
-      - name: Run SQL migrations manually (SQLC style)
+      - name: Run SQL migrations (super fast)
         env:
           PGPASSWORD: postgres
         run: |
-          for f in sql/migrations/*.sql; do
-            echo "[RUNNING] $f"
-            psql -h localhost -U postgres -d smallbiznis_auth -f "$f"
-          done
+          cat sql/migrations/*.sql | psql -h localhost -U postgres -d smallbiznis_auth
 
       - name: Run integration tests
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/smallbiznis_auth?sslmode=disable
-        run: |
-          go test -v -count=1 -tags=integration ./...
+        run: go test -v -count=1 -tags=integration ./...
 
       - name: Notify Slack
         if: always()
