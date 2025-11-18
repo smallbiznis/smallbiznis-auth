@@ -79,6 +79,7 @@ jobs:
         with:
           payload: |
             {
+              "text": "Integration Tests: ${{ job.status }}",
               "blocks": [
                 {
                   "type": "header",
@@ -87,9 +88,9 @@ jobs:
                 {
                   "type": "section",
                   "fields": [
-                    { "type": "mrkdwn", "text": "*Repo:*\n${{ github.repository }}" },
-                    { "type": "mrkdwn", "text": "*Workflow:*\n${{ github.workflow }}" },
-                    { "type": "mrkdwn", "text": "*Commit:*\n`${{ github.sha }}`" }
+                    { "type": "mrkdwn", "text": "*Repo:*\\n${{ github.repository }}" },
+                    { "type": "mrkdwn", "text": "*Workflow:*\\n${{ github.workflow }}" },
+                    { "type": "mrkdwn", "text": "*Commit:*\\n`${{ github.sha }}`" }
                   ]
                 }
               ]
