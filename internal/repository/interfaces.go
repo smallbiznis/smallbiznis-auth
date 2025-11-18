@@ -1,0 +1,47 @@
+package repository
+
+import (
+	"context"
+
+	"github.com/smallbiznis/smallbiznis-auth/internal/domain"
+)
+
+// TenantRepository exposes tenant level queries.
+type TenantRepository interface {
+	GetDomainByHost(ctx context.Context, host string) (domain.Domain, error)
+	GetTenant(ctx context.Context, tenantID int64) (domain.Tenant, error)
+	GetBranding(ctx context.Context, tenantID int64) (domain.Branding, error)
+	ListAuthProviders(ctx context.Context, tenantID int64) ([]domain.AuthProvider, error)
+	GetPasswordConfig(ctx context.Context, tenantID int64) (domain.PasswordConfig, error)
+	GetOTPConfig(ctx context.Context, tenantID int64) (domain.OTPConfig, error)
+	ListOAuthIDPConfigs(ctx context.Context, tenantID int64) ([]domain.OAuthIDPConfig, error)
+}
+
+// UserRepository exposes persistence for platform users.
+type UserRepository interface {
+	GetByEmail(ctx context.Context, tenantID int64, email string) (domain.User, error)
+	GetByID(ctx context.Context, tenantID, userID int64) (domain.User, error)
+	UpdateLoginStats(ctx context.Context, user domain.User) error
+	Create(ctx context.Context, user domain.User) (domain.User, error)
+}
+
+// TokenRepository handles refresh token persistence.
+type TokenRepository interface {
+	CreateToken(ctx context.Context, token domain.OAuthToken) (domain.OAuthToken, error)
+	GetByRefreshToken(ctx context.Context, tenantID int64, token string) (domain.OAuthToken, error)
+	RotateRefreshToken(ctx context.Context, tokenID int64, refreshToken string, expiresAt int64) error
+	RevokeToken(ctx context.Context, tokenID int64) error
+}
+
+// CodeRepository manages authorization codes.
+type CodeRepository interface {
+	CreateCode(ctx context.Context, code domain.OAuthCode) error
+	GetCode(ctx context.Context, tenantID int64, code string) (domain.OAuthCode, error)
+	MarkCodeUsed(ctx context.Context, code string) error
+}
+
+// KeyRepository stores signing keys per tenant.
+type KeyRepository interface {
+	GetActiveKey(ctx context.Context, tenantID int64) (domain.OAuthKey, error)
+	CreateKey(ctx context.Context, key domain.OAuthKey) (domain.OAuthKey, error)
+}

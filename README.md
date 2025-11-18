@@ -58,7 +58,7 @@ Enterprise-grade, multi-tenant OAuth2/OIDC server implemented in Go. The service
 - **Frameworks**: [Uber Fx](https://github.com/uber-go/fx) for DI, [Gin](https://github.com/gin-gonic/gin) for HTTP
 - **Database Access**: [pgxpool](https://github.com/jackc/pgx) with sqlc-generated queries (no ORM)
 - **Auth**: `github.com/go-jose/go-jose/v4` for JWS/JWT, bcrypt for password hashing
-- **Logging**: Go's `slog` JSON handler
+- **Logging**: Uber's `zap` structured logger
 
 ## Configuration
 

@@ -1,0 +1,93 @@
+name: Integration Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smallbiznis_auth
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d smallbiznis_auth"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Wait for database
+        run: |
+          echo "Waiting for Postgres..."
+          for i in {1..20}; do
+            pg_isready -h localhost -p 5432 -U postgres -d smallbiznis_auth && break
+            sleep 2
+          done
+
+      - name: Run SQL migrations manually (SQLC style)
+        env:
+          PGPASSWORD: postgres
+        run: |
+          for f in migrations/*.sql; do
+            echo "[RUNNING] $f"
+            psql -h localhost -U postgres -d smallbiznis_auth -f "$f"
+          done
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/smallbiznis_auth?sslmode=disable
+        run: |
+          go test -v -count=1 -tags=integration ./...
+
+      - name: Notify Slack
+        if: always()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "*Integration Tests*: ${{ job.status }}",
+              "attachments": [{
+                "color": "${{ job.status == 'success' && 'good' || 'danger' }}",
+                "fields": [
+                  { "title": "Repo", "value": "${{ github.repository }}", "short": true },
+                  { "title": "Workflow", "value": "${{ github.workflow }}", "short": true },
+                  { "title": "Commit", "value": "${{ github.sha }}", "short": false }
+                ]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

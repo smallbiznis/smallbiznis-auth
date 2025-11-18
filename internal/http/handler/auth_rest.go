@@ -1,0 +1,212 @@
+package handler
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+
+	"github.com/smallbiznis/smallbiznis-auth/internal/http/middleware"
+	"github.com/smallbiznis/smallbiznis-auth/internal/service"
+)
+
+func (h *AuthHandler) PasswordLogin(c *gin.Context) {
+	tenantCtx, ok := middleware.GetTenantContext(c)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Tenant not resolved."})
+		return
+	}
+
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		ClientID string `json:"client_id"`
+		Scope    string `json:"scope"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Invalid payload."})
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Password) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Email and password are required."})
+		return
+	}
+
+	clientID := strings.TrimSpace(req.ClientID)
+	if clientID == "" {
+		clientID = tenantCtx.ClientID
+	}
+	scope := strings.TrimSpace(req.Scope)
+
+	resp, err := h.Auth.LoginWithPassword(c.Request.Context(), tenantCtx.Tenant.ID, req.Email, req.Password, clientID, scope)
+	if err != nil {
+		respondOAuthError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) PasswordRegister(c *gin.Context) {
+	tenantCtx, ok := middleware.GetTenantContext(c)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Tenant not resolved."})
+		return
+	}
+
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Name     string `json:"name"`
+		ClientID string `json:"client_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Invalid payload."})
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" || strings.TrimSpace(req.Password) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Email and password are required."})
+		return
+	}
+
+	clientID := strings.TrimSpace(req.ClientID)
+	if clientID == "" {
+		clientID = tenantCtx.ClientID
+	}
+
+	resp, err := h.Auth.RegisterWithPassword(c.Request.Context(), tenantCtx.Tenant.ID, req.Email, req.Password, req.Name)
+	if err != nil {
+		respondOAuthError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) PasswordForgot(c *gin.Context) {
+	tenantCtx, ok := middleware.GetTenantContext(c)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Tenant not resolved."})
+		return
+	}
+
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Invalid payload."})
+		return
+	}
+	if strings.TrimSpace(req.Email) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Email is required."})
+		return
+	}
+
+	if err := h.Auth.ForgotPassword(c.Request.Context(), tenantCtx.Tenant.ID, req.Email); err != nil {
+		respondOAuthError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "If the account exists, password reset instructions have been sent."})
+}
+
+func (h *AuthHandler) OTPRequest(c *gin.Context) {
+	tenantCtx, ok := middleware.GetTenantContext(c)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Tenant not resolved."})
+		return
+	}
+
+	var req struct {
+		Phone   string `json:"phone"`
+		Channel string `json:"channel"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Invalid payload."})
+		return
+	}
+	if strings.TrimSpace(req.Phone) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Phone is required."})
+		return
+	}
+
+	if err := h.Auth.RequestOTP(c.Request.Context(), tenantCtx.Tenant.ID, req.Phone, req.Channel); err != nil {
+		respondOAuthError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "OTP request accepted."})
+}
+
+func (h *AuthHandler) OTPVerify(c *gin.Context) {
+	tenantCtx, ok := middleware.GetTenantContext(c)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Tenant not resolved."})
+		return
+	}
+
+	var req struct {
+		Phone    string `json:"phone"`
+		Code     string `json:"code"`
+		ClientID string `json:"client_id"`
+		Scope    string `json:"scope"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Invalid payload."})
+		return
+	}
+	if strings.TrimSpace(req.Phone) == "" || strings.TrimSpace(req.Code) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "error_description": "Phone and code are required."})
+		return
+	}
+
+	clientID := strings.TrimSpace(req.ClientID)
+	if clientID == "" {
+		clientID = tenantCtx.ClientID
+	}
+	scope := strings.TrimSpace(req.Scope)
+
+	resp, err := h.Auth.VerifyOTP(c.Request.Context(), tenantCtx.Tenant.ID, req.Phone, req.Code, clientID, scope)
+	if err != nil {
+		respondOAuthError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *AuthHandler) Me(c *gin.Context) {
+	tenantCtx, ok := middleware.GetTenantContext(c)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Tenant not resolved."})
+		return
+	}
+
+	std, ok := middleware.GetStdClaims(c)
+	if !ok || std == nil || strings.TrimSpace(std.Subject) == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token", "error_description": "Missing subject claim."})
+		return
+	}
+	userID, err := strconv.ParseInt(std.Subject, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid_token", "error_description": "Invalid subject claim."})
+		return
+	}
+
+	user, err := h.Auth.GetUserInfo(c.Request.Context(), tenantCtx.Tenant.ID, userID)
+	if err != nil {
+		respondOAuthError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, user)
+}
+
+func respondOAuthError(c *gin.Context, err error) {
+	if oauthErr, ok := err.(*service.OAuthError); ok {
+		c.JSON(oauthErr.Status, gin.H{"error": oauthErr.Code, "error_description": oauthErr.Description})
+		return
+	}
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error", "error_description": err.Error()})
+}
