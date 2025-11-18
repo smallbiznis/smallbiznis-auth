@@ -87,6 +87,24 @@ go run ./cmd/auth
 
 Uber Fx wires the dependencies, opens the pgx pool, and starts the Gin server with graceful shutdown.
 
+### Container Image
+
+A multi-stage `Dockerfile` is provided for minimal images:
+
+```bash
+docker build -t smallbiznis-auth .
+docker run --rm -p 8080:8080 \
+  -e DATABASE_URL=postgres://user:pass@db:5432/smallbiznis?sslmode=disable \
+  smallbiznis-auth
+```
+
+## CI / Workflows
+
+GitHub Actions definitions under `.github/workflows/` cover both unit and integration checks:
+
+- `ci.yml` (unit tests/lint) runs on pushes and pull requests targeting `main`/`master`.
+- `integration.yml` spins up PostgreSQL, applies `sql/migrations/*.sql`, runs `go test -tags=integration`, and notifies Slack via `SLACK_WEBHOOK_URL`. It runs on push/PR to the default branches or can be triggered manually via *workflow_dispatch*.
+
 ## HTTP Surface
 
 ### Discovery & OIDC
