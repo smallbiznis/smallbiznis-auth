@@ -62,7 +62,7 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: |
-          for f in migrations/*.sql; do
+          for f in sql/migrations/*.sql; do
             echo "[RUNNING] $f"
             psql -h localhost -U postgres -d smallbiznis_auth -f "$f"
           done
