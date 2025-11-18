@@ -79,15 +79,20 @@ jobs:
         with:
           payload: |
             {
-              "text": "*Integration Tests*: ${{ job.status }}",
-              "attachments": [{
-                "color": "${{ job.status == 'success' && 'good' || 'danger' }}",
-                "fields": [
-                  { "title": "Repo", "value": "${{ github.repository }}", "short": true },
-                  { "title": "Workflow", "value": "${{ github.workflow }}", "short": true },
-                  { "title": "Commit", "value": "${{ github.sha }}", "short": false }
-                ]
-              }]
+              "blocks": [
+                {
+                  "type": "header",
+                  "text": { "type": "plain_text", "text": "Integration Tests: ${{ job.status }}" }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    { "type": "mrkdwn", "text": "*Repo:*\n${{ github.repository }}" },
+                    { "type": "mrkdwn", "text": "*Workflow:*\n${{ github.workflow }}" },
+                    { "type": "mrkdwn", "text": "*Commit:*\n`${{ github.sha }}`" }
+                  ]
+                }
+              ]
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
