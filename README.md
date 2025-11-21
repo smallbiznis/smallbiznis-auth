@@ -12,6 +12,8 @@ Enterprise-grade, multi-tenant OAuth2/OIDC server implemented in Go. The service
 5. [HTTP Surface](#http-surface)
    - [Discovery & OIDC](#discovery--oidc)
    - [OAuth Token Grants](#oauth-token-grants)
+   - [External OAuth Providers](#external-oauth-providers)
+   - [Token Utility APIs](#token-utility-apis)
    - [REST Auth Endpoints](#rest-auth-endpoints)
    - [User APIs](#user-apis)
 6. [Tenant Resolution](#tenant-resolution)
@@ -72,15 +74,19 @@ Configuration is environment-driven (see `internal/config/config.go`):
 | `ACCESS_TOKEN_TTL` | `1h` | Access-token lifetime |
 | `REFRESH_TOKEN_TTL` | `720h` (30d) | Refresh token lifetime |
 | `REFRESH_TOKEN_BYTES` | `32` | Size of refresh token entropy |
+| `REDIS_ADDR` | `127.0.0.1:6379` | Redis endpoint for OAuth state/PKCE storage |
+| `REDIS_PASSWORD` | `""` | Redis password (optional) |
+| `REDIS_DB` | `0` | Redis logical DB index |
 
 ## Running Locally
 
 ```bash
 export DATABASE_URL="postgres://user:pass@localhost:5432/smallbiznis?sslmode=disable"
+export REDIS_ADDR="127.0.0.1:6379"
 export APP_ENV=development
 export HTTP_PORT=8080
 
-# Run migrations manually (sql files under sql/)
+# Ensure Postgres + Redis are running locally, then run migrations (sql files under sql/)
 
 go run ./cmd/auth
 ```
@@ -123,6 +129,23 @@ GitHub Actions definitions under `.github/workflows/` cover both unit and integr
 { "error": "invalid_grant", "error_description": "Wrong email or password." }
 ```
 
+### External OAuth Providers
+
+Browser clients can enumerate and start external (Google/Microsoft/etc.) flows through `/auth/oauth/*` endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/auth/oauth/providers` | List enabled IdPs for the resolved tenant (name, icon, display name). |
+| `GET` | `/auth/oauth/start` | Generates state/nonce/PKCE verifier and returns the IdP authorization URL. |
+| `GET` | `/auth/oauth/callback` | Handles IdP redirects, validates state, issues SmallBiznis session cookies, then redirects to caller-provided URI. |
+
+### Token Utility APIs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/oauth/introspect` | RFC 7662-compliant token introspection (always returns HTTP 200 with `active` flag). |
+| `POST` | `/oauth/revoke` | RFC 7009 token revocation for access/refresh tokens. |
+
 ### REST Auth Endpoints
 
 Purpose-built for Next.js dashboards and console apps (JSON in/out). All require tenant resolution via `Tenant` middleware.
@@ -156,7 +179,7 @@ Success responses use `AuthTokensWithUser`:
 
 ### User APIs
 
-- `GET /userinfo` – Standard OIDC userinfo endpoint protected by `Auth` middleware.
+- `GET /oauth/userinfo` – Standard OIDC userinfo endpoint backed by OAuth access tokens.
 - `GET /auth/me` – REST-friendly user profile via `AuthService.GetUserInfo`.
 
 ## Tenant Resolution
@@ -178,6 +201,10 @@ Every handler (OAuth and REST) requires the tenant context; failures result in `
   - Issues JWT access tokens via `jwt.Generator`, persists refresh tokens with `TokenRepository`.
   - Validates OTP using tenant-specific settings and per-user secrets.
   - Exposes helper `JWKS`, `ValidateToken`, and new REST-oriented methods in `auth_rest.go`.
+- **OAuthService (`internal/service/auth/oauth_service.go`)**
+  - Owns external IdP orchestration: listing providers, generating PKCE state/nonce, handling callbacks.
+  - Persists OAuth state in Redis via `internal/adapter/cache/redis_state_store.go`.
+  - Provides RFC-compliant `/oauth/introspect`, `/oauth/revoke`, and `/oauth/userinfo` behaviors.
 
 - **REST helpers (`internal/service/auth_rest.go`)**
   - Wrap OAuth flows into Next.js friendly responses (`AuthTokensWithUser` / `UserViewModel` defined in `models.go`).
@@ -193,6 +220,7 @@ Every handler (OAuth and REST) requires the tenant context; failures result in `
 
 - **HTTP middleware (`internal/http/middleware`)**
   - `Tenant` (host-based resolution) and `Auth` (Authorization header validation) keep handlers slim.
+  - `RequestLogger` adds structured per-request logging with request IDs and tenant metadata.
 
 ## Persistence & SQLC
 

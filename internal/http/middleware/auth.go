@@ -39,7 +39,7 @@ func (m *Auth) ValidateJWT(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid_token", "error_description": "Bearer token required."})
 		return
 	}
-	issuer := fmt.Sprintf("https://%s", stripPortHost(c.Request.Host))
+	issuer := fmt.Sprintf("%s://%s", schemeOnly(c.Request), hostOnly(c.Request))
 	claims, custom, err := m.AuthService.ValidateToken(c.Request.Context(), tenantCtx.Tenant.ID, parts[1], issuer)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid_token", "error_description": "Invalid access token."})
@@ -70,11 +70,24 @@ func GetStdClaims(c *gin.Context) (*gojwt.Claims, bool) {
 	return claims, ok
 }
 
-func stripPortHost(host string) string {
+func hostOnly(r *http.Request) string {
+	host := r.Host
 	if strings.Contains(host, ":") {
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			return h
 		}
 	}
 	return host
+}
+
+func schemeOnly(r *http.Request) string {
+	scheme := r.Header.Get("X-Forwarded-Proto")
+	if scheme == "" {
+		if r.TLS != nil {
+			scheme = "https"
+		} else {
+			scheme = "http"
+		}
+	}
+	return scheme
 }

@@ -14,8 +14,19 @@ const tenantContextKey = "tenantContext"
 // Tenant attaches tenant metadata to the gin context.
 func Tenant(resolver *tenant.Resolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		host := stripPort(c.Request.Host)
-		tenantCtx, err := resolver.Resolve(c.Request.Context(), host)
+		tenantSlug := strings.TrimSpace(c.Request.Header.Get("X-Tenant-ID"))
+
+		var (
+			tenantCtx *tenant.Context
+			err       error
+		)
+
+		if tenantSlug != "" {
+			tenantCtx, err = resolver.ResolveBySlug(c.Request.Context(), tenantSlug)
+		} else {
+			host := stripPort(c.Request.Host)
+			tenantCtx, err = resolver.Resolve(c.Request.Context(), host)
+		}
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Unknown tenant."})
 			return

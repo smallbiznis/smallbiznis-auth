@@ -10,9 +10,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"time"
-
+	"github.com/bwmarrin/snowflake"
 	gojose "github.com/go-jose/go-jose/v4"
 	gojwt "github.com/go-jose/go-jose/v4/jwt"
 	"go.opentelemetry.io/otel"
@@ -50,11 +51,14 @@ func newOAuthError(code, desc string, status int) *OAuthError {
 	return &OAuthError{Code: code, Description: desc, Status: status}
 }
 
+const authorizationCodeTTL = 5 * time.Minute
+
 // AuthService encapsulates authentication flows.
 type AuthService struct {
 	users  repository.UserRepository
 	tokens repository.TokenRepository
 	codes  repository.CodeRepository
+	snowflake *snowflake.Node
 	jwt    *jwt.Generator
 	keys   *jwt.KeyManager
 	cfg    config.Config
@@ -63,11 +67,12 @@ type AuthService struct {
 }
 
 // NewAuthService wires dependencies.
-func NewAuthService(users repository.UserRepository, tokens repository.TokenRepository, codes repository.CodeRepository, generator *jwt.Generator, keys *jwt.KeyManager, cfg config.Config, logger *zap.Logger) *AuthService {
+func NewAuthService(users repository.UserRepository, tokens repository.TokenRepository, codes repository.CodeRepository, snowflake *snowflake.Node, generator *jwt.Generator, keys *jwt.KeyManager, cfg config.Config, logger *zap.Logger) *AuthService {
 	return &AuthService{
 		users:  users,
 		tokens: tokens,
 		codes:  codes,
+		snowflake: snowflake,
 		jwt:    generator,
 		keys:   keys,
 		cfg:    cfg,
@@ -228,6 +233,57 @@ func (s *AuthService) AuthorizationCodeGrant(ctx context.Context, tenantCtx *ten
 	return s.issueTokens(ctx, tenantCtx, user, coalesce(scope, defaultRESTScope), issuer, providers)
 }
 
+// CreateAuthorizationCode persists an authorization code for later redemption.
+func (s *AuthService) CreateAuthorizationCode(ctx context.Context, tenantCtx *tenant.Context, userID int64, clientID, redirectURI, codeChallenge, codeChallengeMethod string) (string, error) {
+	ctx, span := s.startSpan(ctx, "AuthService.CreateAuthorizationCode")
+	defer span.End()
+
+	if tenantCtx == nil {
+		return "", newOAuthError("invalid_request", "Tenant context missing.", http.StatusBadRequest)
+	}
+	if s.codes == nil {
+		return "", newOAuthError("unsupported_response_type", "Authorization code flow disabled.", http.StatusBadRequest)
+	}
+
+	redirect := strings.TrimSpace(redirectURI)
+	if redirect == "" {
+		return "", newOAuthError("invalid_request", "redirect_uri is required.", http.StatusBadRequest)
+	}
+
+	client := strings.TrimSpace(clientID)
+	if client == "" {
+		return "", newOAuthError("invalid_request", "client_id is required.", http.StatusBadRequest)
+	}
+
+	user, err := s.users.GetByID(ctx, tenantCtx.Tenant.ID, userID)
+	if err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("authorize load user: %w", err)
+	}
+
+	codeValue := randomString(32)
+	record := domain.OAuthCode{
+		ID:                  randomID(),
+		TenantID:            tenantCtx.Tenant.ID,
+		ClientID:            client,
+		UserID:              user.ID,
+		Code:                codeValue,
+		RedirectURI:         redirect,
+		CodeChallenge:       strings.TrimSpace(codeChallenge),
+		CodeChallengeMethod: strings.TrimSpace(codeChallengeMethod),
+		ExpiresAt:           time.Now().Add(authorizationCodeTTL),
+		CreatedAt:           time.Now(),
+	}
+
+	if err := s.codes.CreateCode(ctx, record); err != nil {
+		span.RecordError(err)
+		return "", fmt.Errorf("persist authorization code: %w", err)
+	}
+
+	s.audit("authorization_code.issued", "tenant_id", tenantCtx.Tenant.ID, "user_id", user.ID, "client_id", client)
+	return codeValue, nil
+}
+
 // DeviceCodeGrant is optional and currently unsupported.
 func (s *AuthService) DeviceCodeGrant(ctx context.Context) (*TokenResponse, error) {
 	return nil, newOAuthError("unsupported_grant_type", "device_code is not enabled.", 400)
@@ -277,8 +333,9 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantCtx *tenant.Context
 
 	refreshToken := randomString(s.cfg.RefreshTokenBytes)
 	oauthToken := domain.OAuthToken{
+		ID: s.snowflake.Generate().Int64(),
 		TenantID:     tenantCtx.Tenant.ID,
-		ClientID:     tenantCtx.ClientID,
+		ClientID: tenantCtx.ClientID,
 		UserID:       user.ID,
 		AccessToken:  access,
 		RefreshToken: refreshToken,
@@ -340,6 +397,15 @@ func randomString(n int) string {
 		panic(err)
 	}
 	return hex.EncodeToString(b)
+}
+
+func randomID() int64 {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		panic(err)
+	}
+	b[0] &= 0x7f
+	return int64(binary.BigEndian.Uint64(b[:]))
 }
 
 // ValidateToken proxies to JWT generator to validate tokens.

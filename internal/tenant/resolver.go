@@ -12,8 +12,8 @@ import (
 
 // Context stores resolved tenant metadata used throughout the request lifecycle.
 type Context struct {
-	Domain          domain.Domain
-	Tenant          domain.Tenant
+	Domain domain.Domain
+	Tenant domain.Tenant
 	ClientID        string
 	Branding        domain.Branding
 	AuthProviders   []domain.AuthProvider
@@ -52,6 +52,33 @@ func (r *Resolver) Resolve(ctx context.Context, host string) (*Context, error) {
 		return nil, fmt.Errorf("resolve tenant: %w", err)
 	}
 
+	return r.buildContext(ctx, domainRow, tenantRow)
+}
+
+// ResolveBySlug loads tenant information using tenant slug header.
+func (r *Resolver) ResolveBySlug(ctx context.Context, slug string) (*Context, error) {
+	cleaned := strings.ToLower(strings.TrimSpace(slug))
+	if cleaned == "" {
+		zap.L().Warn("tenant resolver received empty slug")
+		return nil, fmt.Errorf("resolve tenant: empty slug")
+	}
+
+	tenantRow, err := r.repo.GetTenantBySlug(ctx, cleaned)
+	if err != nil {
+		zap.L().Error("failed to resolve tenant by slug", zap.String("slug", cleaned), zap.Error(err))
+		return nil, fmt.Errorf("resolve tenant by slug: %w", err)
+	}
+
+	domainRow, err := r.repo.GetPrimaryDomain(ctx, tenantRow.ID)
+	if err != nil {
+		zap.L().Error("failed to resolve primary domain", zap.Int64("tenant_id", tenantRow.ID), zap.String("slug", cleaned), zap.Error(err))
+		return nil, fmt.Errorf("resolve primary domain: %w", err)
+	}
+
+	return r.buildContext(ctx, domainRow, tenantRow)
+}
+
+func (r *Resolver) buildContext(ctx context.Context, domainRow domain.Domain, tenantRow domain.Tenant) (*Context, error) {
 	branding, err := r.repo.GetBranding(ctx, tenantRow.ID)
 	if err != nil {
 		zap.L().Error("failed to resolve branding", zap.Int64("tenant_id", tenantRow.ID), zap.Error(err))
@@ -82,12 +109,12 @@ func (r *Resolver) Resolve(ctx context.Context, host string) (*Context, error) {
 		return nil, fmt.Errorf("resolve social providers: %w", err)
 	}
 
-	zap.L().Debug("tenant context resolved", zap.String("host", cleaned), zap.Int64("tenant_id", tenantRow.ID))
+	zap.L().Debug("tenant context resolved", zap.String("host", domainRow.Host), zap.Int64("tenant_id", tenantRow.ID))
 
 	return &Context{
-		Domain:          domainRow,
-		Tenant:          tenantRow,
-		ClientID:        tenantRow.Code,
+		Domain: domainRow,
+		Tenant: tenantRow,
+		// ClientID:        tenantRow.Code,
 		Branding:        branding,
 		AuthProviders:   authProviders,
 		PasswordConfig:  passwordConfig,

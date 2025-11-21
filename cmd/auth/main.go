@@ -6,9 +6,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 	"go.uber.org/zap"
-
+	"github.com/bwmarrin/snowflake"
+	cacheadapter "github.com/smallbiznis/smallbiznis-auth/internal/adapter/cache"
+	oauthadapter "github.com/smallbiznis/smallbiznis-auth/internal/adapter/oauth"
 	"github.com/smallbiznis/smallbiznis-auth/internal/config"
 	httptransport "github.com/smallbiznis/smallbiznis-auth/internal/http"
 	"github.com/smallbiznis/smallbiznis-auth/internal/http/handler"
@@ -18,6 +21,7 @@ import (
 	"github.com/smallbiznis/smallbiznis-auth/internal/repository"
 	"github.com/smallbiznis/smallbiznis-auth/internal/server"
 	"github.com/smallbiznis/smallbiznis-auth/internal/service"
+	authservice "github.com/smallbiznis/smallbiznis-auth/internal/service/auth"
 	"github.com/smallbiznis/smallbiznis-auth/internal/telemetry"
 	"github.com/smallbiznis/smallbiznis-auth/internal/tenant"
 	"github.com/smallbiznis/smallbiznis-auth/sqlc"
@@ -29,6 +33,7 @@ func main() {
 			newConfig,
 			newLogger,
 			newTelemetry,
+			newSnowflake,
 			newPGXPool,
 			newQueries,
 			newTenantRepository,
@@ -36,11 +41,16 @@ func main() {
 			newTokenRepository,
 			newCodeRepository,
 			newKeyRepository,
+			newOAuthProviderConfigRepository,
+			newRedisClient,
+			newOAuthStateStore,
+			newOAuthProviderClient,
 			newRateLimiter,
 			tenant.NewResolver,
 			newKeyManager,
 			newTokenGenerator,
 			service.NewAuthService,
+			authservice.NewOAuthService,
 			newDiscoveryService,
 			handler.NewAuthHandler,
 			newAuthMiddleware,
@@ -91,6 +101,11 @@ func newTelemetry(lc fx.Lifecycle, cfg config.Config, logger *zap.Logger) (*tele
 	return provider, nil
 }
 
+func newSnowflake() (*snowflake.Node, error) {
+	node, err := snowflake.NewNode(1)
+	return node, err
+}
+
 func newPGXPool(lc fx.Lifecycle, cfg config.Config) (*pgxpool.Pool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -137,6 +152,38 @@ func newCodeRepository(q *sqlc.Queries) repository.CodeRepository {
 
 func newKeyRepository(q *sqlc.Queries) repository.KeyRepository {
 	return repository.NewPostgresKeyRepo(q)
+}
+
+func newOAuthProviderConfigRepository(q *sqlc.Queries) repository.OAuthProviderConfigRepo {
+	return repository.NewPostgresOAuthProviderConfigRepo(q)
+}
+
+func newRedisClient(lc fx.Lifecycle, cfg config.Config) (redis.UniversalClient, error) {
+	client := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Ping(ctx).Err(); err != nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("redis ping: %w", err)
+	}
+	lc.Append(fx.Hook{
+		OnStop: func(context.Context) error {
+			return client.Close()
+		},
+	})
+	return client, nil
+}
+
+func newOAuthStateStore(client redis.UniversalClient) repository.OAuthStateStore {
+	return cacheadapter.NewRedisStateStore(client)
+}
+
+func newOAuthProviderClient() oauthadapter.ProviderClient {
+	return oauthadapter.NewHTTPProviderClient(nil)
 }
 
 func newRateLimiter(cfg config.Config) *apimiddleware.RateLimiter {

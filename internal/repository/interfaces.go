@@ -10,6 +10,8 @@ import (
 type TenantRepository interface {
 	GetDomainByHost(ctx context.Context, host string) (domain.Domain, error)
 	GetTenant(ctx context.Context, tenantID int64) (domain.Tenant, error)
+	GetTenantBySlug(ctx context.Context, slug string) (domain.Tenant, error)
+	GetPrimaryDomain(ctx context.Context, tenantID int64) (domain.Domain, error)
 	GetBranding(ctx context.Context, tenantID int64) (domain.Branding, error)
 	ListAuthProviders(ctx context.Context, tenantID int64) ([]domain.AuthProvider, error)
 	GetPasswordConfig(ctx context.Context, tenantID int64) (domain.PasswordConfig, error)
@@ -28,6 +30,8 @@ type UserRepository interface {
 type TokenRepository interface {
 	CreateToken(ctx context.Context, token domain.OAuthToken) (domain.OAuthToken, error)
 	GetByRefreshToken(ctx context.Context, tenantID int64, token string) (domain.OAuthToken, error)
+	GetByRefreshTokenValue(ctx context.Context, token string) (domain.OAuthToken, error)
+	GetByAccessToken(ctx context.Context, token string) (domain.OAuthToken, error)
 	RotateRefreshToken(ctx context.Context, tokenID int64, refreshToken string, expiresAt int64) error
 	RevokeToken(ctx context.Context, tokenID int64) error
 }

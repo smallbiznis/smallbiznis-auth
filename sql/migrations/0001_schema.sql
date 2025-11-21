@@ -250,6 +250,7 @@ CREATE TABLE oauth_apps (
     icon_url TEXT,
 
     is_active BOOLEAN DEFAULT TRUE,
+    is_first_party BOOLEAN DEFAULT FALSE,
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -273,6 +274,8 @@ CREATE TABLE oauth_clients (
     redirect_uris TEXT[] DEFAULT ARRAY[]::TEXT[],
     grants TEXT[] DEFAULT ARRAY[]::TEXT[],
     scopes TEXT[] DEFAULT ARRAY[]::TEXT[],
+    token_endpoint_auth_methods TEXT[] DEFAULT ARRAY[]::TEXT[],
+    require_consent BOOLEAN DEFAULT FALSE,
 
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -450,18 +453,18 @@ ON CONFLICT DO NOTHING;
 -- Primary domains
 INSERT INTO domains (id, tenant_id, host, is_primary, verified)
 VALUES
-    (1001, 1000, 'accounts.localhost', TRUE, TRUE),
-    (2001, 2000, 'kopikenangan.localhost', TRUE, TRUE),
+    (1001, 1000, 'accounts.smallbiznisapp.io', TRUE, TRUE),
+    (2001, 2000, 'kopikenangan.smallbiznisapp.io', TRUE, TRUE),
 ON CONFLICT DO NOTHING;
 
 -- OAuth apps & clients (Postman-friendly defaults)
-INSERT INTO oauth_apps (id, tenant_id, name, app_type, description, icon_url, is_active)
+INSERT INTO oauth_apps (id, tenant_id, name, app_type, description, icon_url, is_active, is_first_party)
 VALUES
-    (1100, 1000, 'SmallBiznis Console', 'WEB', 'First-party admin console', NULL, TRUE),
-    (2100, 2000, 'Kopi Kenangan POS', 'WEB', 'POS integration for Kopi Kenangan', NULL, TRUE)
+    (1100, 1000, 'SmallBiznis Console', 'WEB', 'First-party admin console', NULL, TRUE, TRUE),
+    (2100, 2000, 'Kopi Kenangan POS', 'WEB', 'POS integration for Kopi Kenangan', NULL, TRUE, FALSE)
 ON CONFLICT DO NOTHING;
 
-INSERT INTO oauth_clients (id, tenant_id, app_id, client_id, client_secret, redirect_uris, grants, scopes)
+INSERT INTO oauth_clients (id, tenant_id, app_id, client_id, client_secret, redirect_uris, grants, scopes, token_endpoint_auth_methods, require_consent)
 VALUES
     (
         1200,
@@ -471,7 +474,9 @@ VALUES
         'console-web-secret',
         ARRAY['https://oauth.pstmn.io/v1/callback', 'http://localhost:3000/callback'],
         ARRAY['authorization_code', 'refresh_token', 'client_credentials'],
-        ARRAY['openid', 'profile', 'email', 'offline_access']
+        ARRAY['openid', 'profile', 'email', 'offline_access'],
+        ARRAY['client_secret_basic'],
+        FALSE
     ),
     (
         2200,
@@ -532,7 +537,6 @@ VALUES
         ARRAY['openid','email','profile']
     )
 ON CONFLICT DO NOTHING;
-
 
 INSERT INTO saml_idp_configs (id, tenant_id, idp_entity_id, sso_url, certificate, acs_url, sp_entity_id)
 VALUES

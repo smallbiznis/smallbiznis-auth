@@ -68,7 +68,7 @@ func seedBaseTenant(t *testing.T, db *pgxpool.Pool) (tenantID int64) {
 	assert.NoError(t, err)
 
 	_, err = db.Exec(ctx, `
-		INSERT INTO oauth_keys (id, tenant_id, kid, secret, algorithm, active)
+		INSERT INTO oauth_keys (id, tenant_id, kid, secret, algorithm, is_active)
 		VALUES ($1,$2,$3,$4,$5,true)
 		ON CONFLICT (id) DO UPDATE SET secret = EXCLUDED.secret
 	`, int64(30001), tenantID, "test-kid", "super-secret-key", "HS256")

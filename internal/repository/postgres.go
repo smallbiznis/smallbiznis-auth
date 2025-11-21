@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -45,19 +44,23 @@ func (r *PostgresTenantRepo) GetTenant(ctx context.Context, tenantID int64) (dom
 	if err != nil {
 		return domain.Tenant{}, fmt.Errorf("get tenant: %w", err)
 	}
-	return domain.Tenant{
-		ID:          row.ID,
-		Type:        row.Type,
-		Name:        row.Name,
-		Code:        row.Code,
-		Slug:        row.Slug,
-		CountryCode: row.CountryCode,
-		Timezone:    row.Timezone,
-		IsDefault:   row.IsDefault,
-		Status:      row.Status,
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
-	}, nil
+	return mapTenantRow(row), nil
+}
+
+func (r *PostgresTenantRepo) GetTenantBySlug(ctx context.Context, slug string) (domain.Tenant, error) {
+	row, err := r.q.GetTenantBySlug(ctx, slug)
+	if err != nil {
+		return domain.Tenant{}, fmt.Errorf("get tenant by slug: %w", err)
+	}
+	return mapTenantRow(row), nil
+}
+
+func (r *PostgresTenantRepo) GetPrimaryDomain(ctx context.Context, tenantID int64) (domain.Domain, error) {
+	row, err := r.q.GetPrimaryDomain(ctx, tenantID)
+	if err != nil {
+		return domain.Domain{}, fmt.Errorf("get primary domain: %w", err)
+	}
+	return domain.Domain{ID: row.ID, Host: row.Host, TenantID: row.TenantID}, nil
 }
 
 func (r *PostgresTenantRepo) GetBranding(ctx context.Context, tenantID int64) (domain.Branding, error) {
@@ -191,12 +194,13 @@ func (r *PostgresUserRepo) GetByID(ctx context.Context, tenantID, userID int64) 
 	return mapUserRow(row), nil
 }
 
-const insertUserSQL = `INSERT INTO users (tenant_id, email, email_verified, password_hash, name, phone, phone_verified, avatar_url, status)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+const insertUserSQL = `INSERT INTO users (id, tenant_id, email, email_verified, password_hash, name, phone, phone_verified, avatar_url, status)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING id, tenant_id, email, email_verified, password_hash, name, phone, phone_verified, avatar_url, status, created_at, updated_at`
 
 func (r *PostgresUserRepo) Create(ctx context.Context, user domain.User) (domain.User, error) {
 	row := r.db.QueryRow(ctx, insertUserSQL,
+		user.ID,
 		user.TenantID,
 		user.Email,
 		user.EmailVerified,
@@ -243,7 +247,7 @@ func (r *PostgresTokenRepo) CreateToken(ctx context.Context, token domain.OAuthT
 	if token.RefreshToken != "" {
 		refresh = sql.NullString{String: token.RefreshToken, Valid: true}
 	}
-	row, err := r.q.InsertOAuthToken(ctx, token.TenantID, token.ClientID, token.UserID, token.AccessToken, refresh, strings.Join(token.Scopes, ","), token.ExpiresAt)
+	row, err := r.q.InsertOAuthToken(ctx, token.ID, token.TenantID, token.ClientID, token.UserID, token.AccessToken, refresh, token.Scopes, token.ExpiresAt)
 	if err != nil {
 		return domain.OAuthToken{}, fmt.Errorf("insert token: %w", err)
 	}
@@ -254,6 +258,22 @@ func (r *PostgresTokenRepo) GetByRefreshToken(ctx context.Context, tenantID int6
 	row, err := r.q.GetOAuthTokenByRefresh(ctx, tenantID, token)
 	if err != nil {
 		return domain.OAuthToken{}, fmt.Errorf("get refresh token: %w", err)
+	}
+	return mapTokenRow(row), nil
+}
+
+func (r *PostgresTokenRepo) GetByRefreshTokenValue(ctx context.Context, token string) (domain.OAuthToken, error) {
+	row, err := r.q.GetOAuthTokenByRefreshValue(ctx, token)
+	if err != nil {
+		return domain.OAuthToken{}, fmt.Errorf("get refresh token value: %w", err)
+	}
+	return mapTokenRow(row), nil
+}
+
+func (r *PostgresTokenRepo) GetByAccessToken(ctx context.Context, token string) (domain.OAuthToken, error) {
+	row, err := r.q.GetOAuthTokenByAccess(ctx, token)
+	if err != nil {
+		return domain.OAuthToken{}, fmt.Errorf("get access token: %w", err)
 	}
 	return mapTokenRow(row), nil
 }
@@ -348,6 +368,22 @@ func (r *PostgresKeyRepo) CreateKey(ctx context.Context, key domain.OAuthKey) (d
 	mapped := mapKeyRow(row)
 	mapped.IsActive = true
 	return mapped, nil
+}
+
+func mapTenantRow(row sqlc.GetTenantRow) domain.Tenant {
+	return domain.Tenant{
+		ID:          row.ID,
+		Type:        row.Type,
+		Name:        row.Name,
+		Code:        row.Code,
+		Slug:        row.Slug,
+		CountryCode: row.CountryCode,
+		Timezone:    row.Timezone,
+		IsDefault:   row.IsDefault,
+		Status:      row.Status,
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
 }
 
 func mapKeyRow(row sqlc.GetActiveOAuthKeyRow) domain.OAuthKey {

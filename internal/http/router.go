@@ -15,6 +15,7 @@ import (
 func NewRouter(cfg config.Config, authHandler *handler.AuthHandler, authMiddleware *httpmiddleware.Auth, resolver *tenant.Resolver, rateLimiter *middleware.RateLimiter) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(httpmiddleware.RequestLogger(nil))
 	if rateLimiter != nil {
 		r.Use(rateLimiter.Handler())
 	}
@@ -38,6 +39,9 @@ func NewRouter(cfg config.Config, authHandler *handler.AuthHandler, authMiddlewa
 		}
 
 		authGroup.GET("/me", authMiddleware.ValidateJWT, authHandler.Me)
+		authGroup.GET("/oauth/providers", authHandler.OAuthListProviders)
+		authGroup.GET("/oauth/start", authHandler.OAuthStart)
+		authGroup.GET("/oauth/callback", authHandler.OAuthCallback)
 	}
 
 	r.GET("/.well-known/tenant", authHandler.TenantDiscovery)
@@ -47,10 +51,13 @@ func NewRouter(cfg config.Config, authHandler *handler.AuthHandler, authMiddlewa
 	oauth := r.Group("/oauth")
 	{
 		oauth.POST("/token", authHandler.Token)
-		oauth.GET("/authorize", authHandler.Authorize)
+		oauth.GET("/authorize", authHandler.OAuthAuthorize)
+		oauth.POST("/introspect", authHandler.OAuthIntrospect)
+		oauth.POST("/revoke", authHandler.OAuthRevoke)
+		oauth.GET("/userinfo", authHandler.OAuthUserInfo)
 	}
 
-	r.GET("/userinfo", authMiddleware.ValidateJWT, authHandler.UserInfo)
+	// r.GET("/userinfo", authMiddleware.ValidateJWT, authHandler.GetUserInfo)
 
 	return r
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -32,11 +33,12 @@ func TestPasswordGrantAndRefreshFlow(t *testing.T) {
 	keyManager := jwt.NewKeyManager(keyRepo)
 	generator := jwt.NewGenerator(keyManager, cfg.AccessTokenTTL)
 	logger := zap.NewNop()
-	authService := service.NewAuthService(userRepo, tokenRepo, codeRepo, generator, keyManager, cfg, logger)
+	node, _ := snowflake.NewNode(1)
+	authService := service.NewAuthService(userRepo, tokenRepo, codeRepo, node, generator, keyManager, cfg, logger)
 
 	tenantCtx := &tenant.Context{
-		Tenant:         domain.Tenant{ID: 1, Name: "Tenant A", Code: "client"},
-		ClientID:       "client",
+		Tenant: domain.Tenant{ID: 1, Name: "Tenant A", Code: "client"},
+		// ClientID:       "client",
 		PasswordConfig: domain.PasswordConfig{TenantID: 1, MinLength: 8, LockoutAttempts: 5, LockoutDurationSeconds: 300},
 		AuthProviders:  []domain.AuthProvider{{ProviderType: "password", IsActive: true}},
 		OTPConfig:      domain.OTPConfig{TenantID: 1, Channel: "sms", ExpirySeconds: 300},
@@ -98,6 +100,14 @@ func (m *memoryTokenRepo) CreateToken(ctx context.Context, token domain.OAuthTok
 }
 
 func (m *memoryTokenRepo) GetByRefreshToken(ctx context.Context, tenantID int64, token string) (domain.OAuthToken, error) {
+	return m.lastToken, nil
+}
+
+func (m *memoryTokenRepo) GetByRefreshTokenValue(ctx context.Context, token string) (domain.OAuthToken, error) {
+	return m.lastToken, nil
+}
+
+func (m *memoryTokenRepo) GetByAccessToken(ctx context.Context, token string) (domain.OAuthToken, error) {
 	return m.lastToken, nil
 }
 
