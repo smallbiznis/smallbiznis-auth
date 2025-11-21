@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,8 +36,10 @@ func (h *AuthHandler) PasswordLogin(c *gin.Context) {
 
 	clientID := strings.TrimSpace(req.ClientID)
 	if clientID == "" {
-		clientID = tenantCtx.ClientID
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unauthorized_client", "error_description": "Unknown client_id for tenant."})
+		return
 	}
+
 	scope := strings.TrimSpace(req.Scope)
 
 	resp, err := h.Auth.LoginWithPassword(c.Request.Context(), tenantCtx.Tenant.ID, req.Email, req.Password, clientID, scope)
@@ -72,10 +75,11 @@ func (h *AuthHandler) PasswordRegister(c *gin.Context) {
 
 	clientID := strings.TrimSpace(req.ClientID)
 	if clientID == "" {
-		clientID = tenantCtx.ClientID
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unauthorized_client", "error_description": "Unknown client_id for tenant."})
+		return
 	}
 
-	resp, err := h.Auth.RegisterWithPassword(c.Request.Context(), tenantCtx.Tenant.ID, req.Email, req.Password, req.Name)
+	resp, err := h.Auth.RegisterWithPassword(c.Request.Context(), tenantCtx.Tenant.ID, req.Email, req.Password, req.Name, clientID)
 	if err != nil {
 		respondOAuthError(c, err)
 		return
@@ -163,7 +167,8 @@ func (h *AuthHandler) OTPVerify(c *gin.Context) {
 
 	clientID := strings.TrimSpace(req.ClientID)
 	if clientID == "" {
-		clientID = tenantCtx.ClientID
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unauthorized_client", "error_description": "Unknown client_id for tenant."})
+		return
 	}
 	scope := strings.TrimSpace(req.Scope)
 
@@ -204,6 +209,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 }
 
 func respondOAuthError(c *gin.Context, err error) {
+	fmt.Printf("err: %v\n", err.Error())
 	if oauthErr, ok := err.(*service.OAuthError); ok {
 		c.JSON(oauthErr.Status, gin.H{"error": oauthErr.Code, "error_description": oauthErr.Description})
 		return

@@ -48,11 +48,11 @@ func (s *AuthService) LoginWithPassword(ctx context.Context, tenantID int64, ema
 	return newAuthTokensWithUser(user, tokenResp), nil
 }
 
-func (s *AuthService) RegisterWithPassword(ctx context.Context, tenantID int64, email, password, name string) (AuthTokensWithUser, error) {
+func (s *AuthService) RegisterWithPassword(ctx context.Context, tenantID int64, email, password, name, clientId string) (AuthTokensWithUser, error) {
 	ctx, span := s.startSpan(ctx, "AuthService.RegisterWithPassword")
 	defer span.End()
 
-	tenantCtx, err := s.tenantContextFromContext(ctx, tenantID, "")
+	tenantCtx, err := s.tenantContextFromContext(ctx, tenantID, clientId)
 	if err != nil {
 		span.RecordError(err)
 		return AuthTokensWithUser{}, err
@@ -80,6 +80,7 @@ func (s *AuthService) RegisterWithPassword(ctx context.Context, tenantID int64, 
 	}
 
 	model := domain.User{
+		ID: s.snowflake.Generate().Int64(),
 		TenantID:      tenantID,
 		Email:         normalized,
 		PasswordHash:  string(hashed),
@@ -226,9 +227,7 @@ func (s *AuthService) tenantContextFromContext(ctx context.Context, tenantID int
 	if tenantID != 0 && tenantCtx.Tenant.ID != tenantID {
 		return nil, newOAuthError("invalid_request", "Tenant mismatch.", http.StatusBadRequest)
 	}
-	if clientID != "" {
-		tenantCtx.ClientID = clientID
-	}
+	tenantCtx.ClientID = clientID
 	return tenantCtx, nil
 }
 

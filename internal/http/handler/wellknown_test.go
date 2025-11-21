@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,7 @@ func TestJWKSHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tenantCtx := testTenantCtx()
 	authSvc := newTestAuthService()
-	handler := httpHandler.NewAuthHandler(authSvc, &service.DiscoveryService{})
+	handler := httpHandler.NewAuthHandler(authSvc, nil, &service.DiscoveryService{})
 
 	req := httptest.NewRequest(http.MethodGet, "https://tenant.smallbiznis/.well-known/jwks.json", nil)
 	w := httptest.NewRecorder()
@@ -49,7 +50,7 @@ func TestJWKSHandler(t *testing.T) {
 func TestOpenIDConfigurationResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tenantCtx := testTenantCtx()
-	handler := httpHandler.NewAuthHandler(newTestAuthService(), &service.DiscoveryService{})
+	handler := httpHandler.NewAuthHandler(newTestAuthService(), nil, &service.DiscoveryService{})
 
 	req := httptest.NewRequest(http.MethodGet, "https://tenant.smallbiznis/.well-known/openid-configuration", nil)
 	w := httptest.NewRecorder()
@@ -70,9 +71,9 @@ func TestOpenIDConfigurationResponse(t *testing.T) {
 
 func testTenantCtx() *tenant.Context {
 	return &tenant.Context{
-		Domain:         domain.Domain{Host: "tenant.smallbiznis"},
-		Tenant:         domain.Tenant{ID: 1, Name: "SmallBiznis", Code: "client", Timezone: "Asia/Singapore"},
-		ClientID:       "client",
+		Domain: domain.Domain{Host: "tenant.smallbiznis"},
+		Tenant: domain.Tenant{ID: 1, Name: "SmallBiznis", Code: "client", Timezone: "Asia/Singapore"},
+		// ClientID:       "client",
 		Branding:       domain.Branding{TenantID: 1, LogoURL: strPtr("https://cdn/logo.png")},
 		AuthProviders:  []domain.AuthProvider{{TenantID: 1, ProviderType: "password", IsActive: true}},
 		PasswordConfig: domain.PasswordConfig{TenantID: 1, MinLength: 8, LockoutAttempts: 5, LockoutDurationSeconds: 300},
@@ -86,7 +87,8 @@ func newTestAuthService() *service.AuthService {
 	generator := jwt.NewGenerator(keyManager, time.Minute)
 	cfg := config.Config{AccessTokenTTL: time.Minute, RefreshTokenTTL: time.Hour, RefreshTokenBytes: 32}
 	logger := zap.NewNop()
-	return service.NewAuthService(&noopUserRepo{}, &noopTokenRepo{}, &noopCodeRepo{}, generator, keyManager, cfg, logger)
+	node, _ := snowflake.NewNode(1)
+	return service.NewAuthService(&noopUserRepo{}, &noopTokenRepo{}, &noopCodeRepo{}, node, generator, keyManager, cfg, logger)
 }
 
 type noopUserRepo struct{}
@@ -119,6 +121,14 @@ func (n *noopTokenRepo) CreateToken(ctx context.Context, token domain.OAuthToken
 }
 
 func (n *noopTokenRepo) GetByRefreshToken(ctx context.Context, tenantID int64, token string) (domain.OAuthToken, error) {
+	return domain.OAuthToken{}, fmt.Errorf("not implemented")
+}
+
+func (n *noopTokenRepo) GetByRefreshTokenValue(ctx context.Context, token string) (domain.OAuthToken, error) {
+	return domain.OAuthToken{}, fmt.Errorf("not implemented")
+}
+
+func (n *noopTokenRepo) GetByAccessToken(ctx context.Context, token string) (domain.OAuthToken, error) {
 	return domain.OAuthToken{}, fmt.Errorf("not implemented")
 }
 

@@ -30,6 +30,8 @@ type UserRepository interface {
 type TokenRepository interface {
 	CreateToken(ctx context.Context, token domain.OAuthToken) (domain.OAuthToken, error)
 	GetByRefreshToken(ctx context.Context, tenantID int64, token string) (domain.OAuthToken, error)
+	GetByRefreshTokenValue(ctx context.Context, token string) (domain.OAuthToken, error)
+	GetByAccessToken(ctx context.Context, token string) (domain.OAuthToken, error)
 	RotateRefreshToken(ctx context.Context, tokenID int64, refreshToken string, expiresAt int64) error
 	RevokeToken(ctx context.Context, tokenID int64) error
 }

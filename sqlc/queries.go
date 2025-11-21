@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -46,6 +45,15 @@ func (q *Queries) GetDomainByHost(ctx context.Context, host string) (GetDomainBy
 	return res, err
 }
 
+const getPrimaryDomainSQL = `SELECT id, host, tenant_id FROM domains WHERE tenant_id = $1 ORDER BY is_primary DESC, id ASC LIMIT 1`
+
+func (q *Queries) GetPrimaryDomain(ctx context.Context, tenantID int64) (GetDomainByHostRow, error) {
+	row := q.db.QueryRow(ctx, getPrimaryDomainSQL, tenantID)
+	var res GetDomainByHostRow
+	err := row.Scan(&res.ID, &res.Host, &res.TenantID)
+	return res, err
+}
+
 // Tenant row.
 type GetTenantRow struct {
 	ID          int64
@@ -65,6 +73,27 @@ const getTenantSQL = `SELECT id, type, name, code, slug, country_code, timezone,
 
 func (q *Queries) GetTenant(ctx context.Context, tenantID int64) (GetTenantRow, error) {
 	row := q.db.QueryRow(ctx, getTenantSQL, tenantID)
+	var res GetTenantRow
+	err := row.Scan(
+		&res.ID,
+		&res.Type,
+		&res.Name,
+		&res.Code,
+		&res.Slug,
+		&res.CountryCode,
+		&res.Timezone,
+		&res.IsDefault,
+		&res.Status,
+		&res.CreatedAt,
+		&res.UpdatedAt,
+	)
+	return res, err
+}
+
+const getTenantBySlugSQL = `SELECT id, type, name, code, slug, country_code, timezone, is_default, status, created_at, updated_at FROM tenants WHERE slug = $1 LIMIT 1`
+
+func (q *Queries) GetTenantBySlug(ctx context.Context, slug string) (GetTenantRow, error) {
+	row := q.db.QueryRow(ctx, getTenantBySlugSQL, slug)
 	var res GetTenantRow
 	err := row.Scan(
 		&res.ID,
@@ -329,16 +358,12 @@ type InsertOAuthTokenRow struct {
 	CreatedAt    time.Time
 }
 
-const insertOAuthTokenSQL = `INSERT INTO oauth_tokens (tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at`
+const insertOAuthTokenSQL = `INSERT INTO oauth_tokens (id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at`
 
-func (q *Queries) InsertOAuthToken(ctx context.Context, tenantID int64, clientID string, userID int64, accessToken string, refreshToken sql.NullString, scopes string, expiresAt time.Time) (InsertOAuthTokenRow, error) {
-	row := q.db.QueryRow(ctx, insertOAuthTokenSQL, tenantID, clientID, userID, accessToken, refreshToken, scopes, expiresAt)
+func (q *Queries) InsertOAuthToken(ctx context.Context, ID, tenantID int64, clientID string, userID int64, accessToken string, refreshToken sql.NullString, scopes []string, expiresAt time.Time) (InsertOAuthTokenRow, error) {
+	row := q.db.QueryRow(ctx, insertOAuthTokenSQL, ID, tenantID, clientID, userID, accessToken, refreshToken, scopes, expiresAt)
 	var res InsertOAuthTokenRow
-	var scopeList string
-	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &scopeList, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
-	if scopeList != "" {
-		res.Scopes = strings.Split(scopeList, ",")
-	}
+	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &res.Scopes, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
 	return res, err
 }
 
@@ -347,11 +372,25 @@ const getOAuthTokenByRefreshSQL = `SELECT id, tenant_id, client_id, user_id, acc
 func (q *Queries) GetOAuthTokenByRefresh(ctx context.Context, tenantID int64, refreshToken string) (InsertOAuthTokenRow, error) {
 	row := q.db.QueryRow(ctx, getOAuthTokenByRefreshSQL, tenantID, refreshToken)
 	var res InsertOAuthTokenRow
-	var scopeList string
-	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &scopeList, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
-	if scopeList != "" {
-		res.Scopes = strings.Split(scopeList, ",")
-	}
+	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &res.Scopes, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
+	return res, err
+}
+
+const getOAuthTokenByRefreshValueSQL = `SELECT id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at FROM oauth_tokens WHERE refresh_token = $1 LIMIT 1`
+
+func (q *Queries) GetOAuthTokenByRefreshValue(ctx context.Context, refreshToken string) (InsertOAuthTokenRow, error) {
+	row := q.db.QueryRow(ctx, getOAuthTokenByRefreshValueSQL, refreshToken)
+	var res InsertOAuthTokenRow
+	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &res.Scopes, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
+	return res, err
+}
+
+const getOAuthTokenByAccessSQL = `SELECT id, tenant_id, client_id, user_id, access_token, refresh_token, scopes, expires_at, revoked, created_at FROM oauth_tokens WHERE access_token = $1 LIMIT 1`
+
+func (q *Queries) GetOAuthTokenByAccess(ctx context.Context, accessToken string) (InsertOAuthTokenRow, error) {
+	row := q.db.QueryRow(ctx, getOAuthTokenByAccessSQL, accessToken)
+	var res InsertOAuthTokenRow
+	err := row.Scan(&res.ID, &res.TenantID, &res.ClientID, &res.UserID, &res.AccessToken, &res.RefreshToken, &res.Scopes, &res.ExpiresAt, &res.Revoked, &res.CreatedAt)
 	return res, err
 }
 

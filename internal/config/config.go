@@ -13,6 +13,9 @@ type Config struct {
 	Environment          string
 	HTTPPort             string
 	DatabaseURL          string
+	RedisAddr            string
+	RedisPassword        string
+	RedisDB              int
 	AccessTokenTTL       time.Duration
 	RefreshTokenTTL      time.Duration
 	RefreshTokenBytes    int
@@ -32,6 +35,9 @@ func Load() (Config, error) {
 		Environment:          getEnv("APP_ENV", "development"),
 		HTTPPort:             getEnv("HTTP_PORT", "8080"),
 		DatabaseURL:          os.Getenv("DATABASE_URL"),
+		RedisAddr:            getEnv("REDIS_ADDR", "127.0.0.1:6379"),
+		RedisPassword:        os.Getenv("REDIS_PASSWORD"),
+		RedisDB:              getInt("REDIS_DB", 0),
 		AccessTokenTTL:       getDuration("ACCESS_TOKEN_TTL", time.Hour),
 		RefreshTokenTTL:      getDuration("REFRESH_TOKEN_TTL", 30*24*time.Hour),
 		RefreshTokenBytes:    getInt("REFRESH_TOKEN_BYTES", 32),

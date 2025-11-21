@@ -7,7 +7,7 @@ LIMIT 1;
 
 -- name: InsertOAuthKey :one
 INSERT INTO oauth_keys (
-    tenant_id, kid, secret, algorithm, active
+    id, tenant_id, kid, secret, algorithm, active
 ) VALUES (
-    $1, $2, $3, $4, true
+    $1, $2, $3, $4, $5, true
 ) RETURNING id, tenant_id, kid, secret, algorithm, active, created_at;
