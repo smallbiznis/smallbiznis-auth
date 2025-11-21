@@ -10,6 +10,8 @@ import (
 type TenantRepository interface {
 	GetDomainByHost(ctx context.Context, host string) (domain.Domain, error)
 	GetTenant(ctx context.Context, tenantID int64) (domain.Tenant, error)
+	GetTenantBySlug(ctx context.Context, slug string) (domain.Tenant, error)
+	GetPrimaryDomain(ctx context.Context, tenantID int64) (domain.Domain, error)
 	GetBranding(ctx context.Context, tenantID int64) (domain.Branding, error)
 	ListAuthProviders(ctx context.Context, tenantID int64) ([]domain.AuthProvider, error)
 	GetPasswordConfig(ctx context.Context, tenantID int64) (domain.PasswordConfig, error)
