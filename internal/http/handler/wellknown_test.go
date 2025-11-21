@@ -88,7 +88,7 @@ func newTestAuthService() *service.AuthService {
 	cfg := config.Config{AccessTokenTTL: time.Minute, RefreshTokenTTL: time.Hour, RefreshTokenBytes: 32}
 	logger := zap.NewNop()
 	node, _ := snowflake.NewNode(1)
-	return service.NewAuthService(&noopUserRepo{}, &noopTokenRepo{}, &noopCodeRepo{}, node, generator, keyManager, cfg, logger)
+	return service.NewAuthService(&noopUserRepo{}, &noopTokenRepo{}, &noopCodeRepo{}, &noopClientRepo{}, node, generator, keyManager, cfg, logger)
 }
 
 type noopUserRepo struct{}
@@ -99,10 +99,13 @@ type noopCodeRepo struct{}
 
 type inMemoryKeyRepo struct{ key domain.OAuthKey }
 
+type noopClientRepo struct{}
+
 var _ repository.UserRepository = (*noopUserRepo)(nil)
 var _ repository.TokenRepository = (*noopTokenRepo)(nil)
 var _ repository.CodeRepository = (*noopCodeRepo)(nil)
 var _ repository.KeyRepository = (*inMemoryKeyRepo)(nil)
+var _ repository.OAuthClientRepository = (*noopClientRepo)(nil)
 
 func (n *noopUserRepo) GetByEmail(ctx context.Context, tenantID int64, email string) (domain.User, error) {
 	return domain.User{}, fmt.Errorf("not implemented")
@@ -157,6 +160,14 @@ func (i *inMemoryKeyRepo) CreateKey(ctx context.Context, key domain.OAuthKey) (d
 	key.ID = 1
 	i.key = key
 	return key, nil
+}
+
+func (n *noopClientRepo) GetClientByID(ctx context.Context, tenantID int64, clientID string) (domain.OAuthClient, error) {
+	return domain.OAuthClient{
+		TenantID:     tenantID,
+		ClientID:     clientID,
+		RedirectURIs: []string{"https://tenant/callback"},
+	}, nil
 }
 
 func strPtr(s string) *string {

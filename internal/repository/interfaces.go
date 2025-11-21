@@ -36,6 +36,11 @@ type TokenRepository interface {
 	RevokeToken(ctx context.Context, tokenID int64) error
 }
 
+// OAuthClientRepository exposes client metadata.
+type OAuthClientRepository interface {
+	GetClientByID(ctx context.Context, tenantID int64, clientID string) (domain.OAuthClient, error)
+}
+
 // CodeRepository manages authorization codes.
 type CodeRepository interface {
 	CreateCode(ctx context.Context, code domain.OAuthCode) error

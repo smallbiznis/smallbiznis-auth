@@ -28,13 +28,14 @@ func TestPasswordGrantAndRefreshFlow(t *testing.T) {
 	tokenRepo := &memoryTokenRepo{}
 	codeRepo := &memoryCodeRepo{}
 	keyRepo := &memoryKeyRepo{}
+	clientRepo := &memoryClientRepo{}
 
 	cfg := config.Config{AccessTokenTTL: time.Minute, RefreshTokenTTL: time.Hour, RefreshTokenBytes: 32}
 	keyManager := jwt.NewKeyManager(keyRepo)
 	generator := jwt.NewGenerator(keyManager, cfg.AccessTokenTTL)
 	logger := zap.NewNop()
 	node, _ := snowflake.NewNode(1)
-	authService := service.NewAuthService(userRepo, tokenRepo, codeRepo, node, generator, keyManager, cfg, logger)
+	authService := service.NewAuthService(userRepo, tokenRepo, codeRepo, clientRepo, node, generator, keyManager, cfg, logger)
 
 	tenantCtx := &tenant.Context{
 		Tenant: domain.Tenant{ID: 1, Name: "Tenant A", Code: "client"},
@@ -73,6 +74,8 @@ type memoryCodeRepo struct{}
 type memoryKeyRepo struct {
 	key domain.OAuthKey
 }
+
+type memoryClientRepo struct{}
 
 func (m *memoryUserRepo) GetByEmail(ctx context.Context, tenantID int64, email string) (domain.User, error) {
 	return m.user, nil
@@ -138,4 +141,12 @@ func (m *memoryKeyRepo) CreateKey(ctx context.Context, key domain.OAuthKey) (dom
 	key.ID = 1
 	m.key = key
 	return key, nil
+}
+
+func (m *memoryClientRepo) GetClientByID(ctx context.Context, tenantID int64, clientID string) (domain.OAuthClient, error) {
+	return domain.OAuthClient{
+		TenantID:     tenantID,
+		ClientID:     clientID,
+		RedirectURIs: []string{"https://tenant/callback"},
+	}, nil
 }

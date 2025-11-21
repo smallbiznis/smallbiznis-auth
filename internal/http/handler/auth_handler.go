@@ -322,15 +322,14 @@ func (h *AuthHandler) OAuthAuthorize(c *gin.Context) {
 		return
 	}
 
-	// TODO: implement valid redirect uri based on oauth_clients
-	// if !h.Auth.IsValidRedirectURI(tenantCtx, req.ClientID, redirectURI) {
-	// 	h.oauthErrorRedirect(c, "invalid_request", "redirect_uri not registered for this client.")
-	// 	return
-	// }
-
 	clientID := strings.TrimSpace(req.ClientID)
 	if clientID == "" {
 		h.oauthErrorRedirect(c, "invalid_request", "client_id is required.")
+		return
+	}
+
+	if !h.Auth.IsValidRedirectURI(c.Request.Context(), tenantCtx.Tenant.ID, clientID, redirectURI) {
+		h.oauthErrorRedirect(c, "invalid_request", "redirect_uri not registered for this client.")
 		return
 	}
 

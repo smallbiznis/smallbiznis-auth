@@ -109,3 +109,18 @@ type OAuthIDPConfig struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
+
+// OAuthClient represents an OAuth2/OIDC client registration.
+type OAuthClient struct {
+	ID                       int64
+	TenantID                 int64
+	AppID                    *int64
+	ClientID                 string
+	ClientSecret             string
+	RedirectURIs             []string
+	Grants                   []string
+	Scopes                   []string
+	TokenEndpointAuthMethods []string
+	RequireConsent           bool
+	CreatedAt                time.Time
+}

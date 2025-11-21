@@ -9,10 +9,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math"
-	"net/http"
-	"strings"
-	"time"
 	"github.com/bwmarrin/snowflake"
 	gojose "github.com/go-jose/go-jose/v4"
 	gojwt "github.com/go-jose/go-jose/v4/jwt"
@@ -20,6 +16,10 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
+	"math"
+	"net/http"
+	"strings"
+	"time"
 
 	"github.com/smallbiznis/smallbiznis-auth/internal/config"
 	"github.com/smallbiznis/smallbiznis-auth/internal/domain"
@@ -55,29 +55,31 @@ const authorizationCodeTTL = 5 * time.Minute
 
 // AuthService encapsulates authentication flows.
 type AuthService struct {
-	users  repository.UserRepository
-	tokens repository.TokenRepository
-	codes  repository.CodeRepository
+	users     repository.UserRepository
+	tokens    repository.TokenRepository
+	codes     repository.CodeRepository
+	clients   repository.OAuthClientRepository
 	snowflake *snowflake.Node
-	jwt    *jwt.Generator
-	keys   *jwt.KeyManager
-	cfg    config.Config
-	logger *zap.Logger
-	tracer trace.Tracer
+	jwt       *jwt.Generator
+	keys      *jwt.KeyManager
+	cfg       config.Config
+	logger    *zap.Logger
+	tracer    trace.Tracer
 }
 
 // NewAuthService wires dependencies.
-func NewAuthService(users repository.UserRepository, tokens repository.TokenRepository, codes repository.CodeRepository, snowflake *snowflake.Node, generator *jwt.Generator, keys *jwt.KeyManager, cfg config.Config, logger *zap.Logger) *AuthService {
+func NewAuthService(users repository.UserRepository, tokens repository.TokenRepository, codes repository.CodeRepository, clients repository.OAuthClientRepository, snowflake *snowflake.Node, generator *jwt.Generator, keys *jwt.KeyManager, cfg config.Config, logger *zap.Logger) *AuthService {
 	return &AuthService{
-		users:  users,
-		tokens: tokens,
-		codes:  codes,
+		users:     users,
+		tokens:    tokens,
+		codes:     codes,
+		clients:   clients,
 		snowflake: snowflake,
-		jwt:    generator,
-		keys:   keys,
-		cfg:    cfg,
-		logger: logger,
-		tracer: otel.Tracer("github.com/smallbiznis/smallbiznis-auth/internal/service"),
+		jwt:       generator,
+		keys:      keys,
+		cfg:       cfg,
+		logger:    logger,
+		tracer:    otel.Tracer("github.com/smallbiznis/smallbiznis-auth/internal/service"),
 	}
 }
 
@@ -333,9 +335,9 @@ func (s *AuthService) issueTokens(ctx context.Context, tenantCtx *tenant.Context
 
 	refreshToken := randomString(s.cfg.RefreshTokenBytes)
 	oauthToken := domain.OAuthToken{
-		ID: s.snowflake.Generate().Int64(),
+		ID:           s.snowflake.Generate().Int64(),
 		TenantID:     tenantCtx.Tenant.ID,
-		ClientID: tenantCtx.ClientID,
+		ClientID:     tenantCtx.ClientID,
 		UserID:       user.ID,
 		AccessToken:  access,
 		RefreshToken: refreshToken,
@@ -416,6 +418,30 @@ func (s *AuthService) ValidateToken(ctx context.Context, tenantID int64, token, 
 // JWKS returns tenant JWKS set.
 func (s *AuthService) JWKS(ctx context.Context, tenantID int64) (gojose.JSONWebKeySet, error) {
 	return s.keys.JWKS(ctx, tenantID)
+}
+
+// IsValidRedirectURI validates redirect URIs against stored OAuth clients.
+func (s *AuthService) IsValidRedirectURI(ctx context.Context, tenantID int64, clientID, redirectURI string) bool {
+	if s == nil || s.clients == nil {
+		return false
+	}
+	cleanClient := strings.TrimSpace(clientID)
+	cleanRedirect := strings.TrimSpace(redirectURI)
+	if cleanClient == "" || cleanRedirect == "" {
+		return false
+	}
+
+	client, err := s.clients.GetClientByID(ctx, tenantID, cleanClient)
+	if err != nil {
+		s.log().Warn("lookup oauth client failed", zap.Int64("tenant_id", tenantID), zap.String("client_id", cleanClient), zap.Error(err))
+		return false
+	}
+	for _, allowed := range client.RedirectURIs {
+		if strings.EqualFold(strings.TrimSpace(allowed), cleanRedirect) {
+			return true
+		}
+	}
+	return false
 }
 
 func otpEnabled(cfg domain.OTPConfig) bool {

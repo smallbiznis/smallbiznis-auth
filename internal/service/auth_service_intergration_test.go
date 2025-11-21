@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -112,11 +113,12 @@ func newRealAuthService(t *testing.T, db *pgxpool.Pool, q *sqlc.Queries) *servic
 		AccessTokenTTL: time.Hour,
 	}
 
-	// tenantRepo := repository.NewPostgresTenantRepo(q)
 	userRepo := repository.NewPostgresUserRepo(db)
 	tokenRepo := repository.NewPostgresTokenRepo(q)
 	codeRepo := repository.NewPostgresCodeRepo(q)
 	keyRepo := repository.NewPostgresKeyRepo(q)
+	clientRepo := repository.NewPostgresOAuthClientRepo(db)
+	node, _ := snowflake.NewNode(1)
 
 	keyManager := jwt.NewKeyManager(keyRepo)
 	generator := jwt.NewGenerator(keyManager, cfg.AccessTokenTTL)
@@ -125,6 +127,8 @@ func newRealAuthService(t *testing.T, db *pgxpool.Pool, q *sqlc.Queries) *servic
 		userRepo,
 		tokenRepo,
 		codeRepo,
+		clientRepo,
+		node,
 		generator,
 		keyManager,
 		cfg,
