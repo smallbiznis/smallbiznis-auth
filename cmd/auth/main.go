@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bwmarrin/snowflake"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
-	"go.uber.org/fx"
-	"go.uber.org/zap"
-	"github.com/bwmarrin/snowflake"
 	cacheadapter "github.com/smallbiznis/smallbiznis-auth/internal/adapter/cache"
 	oauthadapter "github.com/smallbiznis/smallbiznis-auth/internal/adapter/oauth"
 	"github.com/smallbiznis/smallbiznis-auth/internal/config"
@@ -25,6 +23,8 @@ import (
 	"github.com/smallbiznis/smallbiznis-auth/internal/telemetry"
 	"github.com/smallbiznis/smallbiznis-auth/internal/tenant"
 	"github.com/smallbiznis/smallbiznis-auth/sqlc"
+	"go.uber.org/fx"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -41,6 +41,7 @@ func main() {
 			newTokenRepository,
 			newCodeRepository,
 			newKeyRepository,
+			newOAuthClientRepository,
 			newOAuthProviderConfigRepository,
 			newRedisClient,
 			newOAuthStateStore,
@@ -152,6 +153,10 @@ func newCodeRepository(q *sqlc.Queries) repository.CodeRepository {
 
 func newKeyRepository(q *sqlc.Queries) repository.KeyRepository {
 	return repository.NewPostgresKeyRepo(q)
+}
+
+func newOAuthClientRepository(pool *pgxpool.Pool) repository.OAuthClientRepository {
+	return repository.NewPostgresOAuthClientRepo(pool)
 }
 
 func newOAuthProviderConfigRepository(q *sqlc.Queries) repository.OAuthProviderConfigRepo {

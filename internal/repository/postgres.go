@@ -15,11 +15,12 @@ import (
 
 // Compile-time interface assertions.
 var (
-	_ TenantRepository = (*PostgresTenantRepo)(nil)
-	_ UserRepository   = (*PostgresUserRepo)(nil)
-	_ TokenRepository  = (*PostgresTokenRepo)(nil)
-	_ CodeRepository   = (*PostgresCodeRepo)(nil)
-	_ KeyRepository    = (*PostgresKeyRepo)(nil)
+	_ TenantRepository      = (*PostgresTenantRepo)(nil)
+	_ UserRepository        = (*PostgresUserRepo)(nil)
+	_ TokenRepository       = (*PostgresTokenRepo)(nil)
+	_ CodeRepository        = (*PostgresCodeRepo)(nil)
+	_ KeyRepository         = (*PostgresKeyRepo)(nil)
+	_ OAuthClientRepository = (*PostgresOAuthClientRepo)(nil)
 )
 
 // PostgresTenantRepo implements TenantRepository using sqlc.
@@ -368,6 +369,73 @@ func (r *PostgresKeyRepo) CreateKey(ctx context.Context, key domain.OAuthKey) (d
 	mapped := mapKeyRow(row)
 	mapped.IsActive = true
 	return mapped, nil
+}
+
+// PostgresOAuthClientRepo implements OAuthClientRepository.
+type PostgresOAuthClientRepo struct {
+	db *pgxpool.Pool
+}
+
+func NewPostgresOAuthClientRepo(pool *pgxpool.Pool) *PostgresOAuthClientRepo {
+	return &PostgresOAuthClientRepo{db: pool}
+}
+
+func (r *PostgresOAuthClientRepo) GetClientByID(ctx context.Context, tenantID int64, clientID string) (domain.OAuthClient, error) {
+	const query = `
+SELECT id, tenant_id, app_id, client_id, client_secret, redirect_uris, grants, scopes, token_endpoint_auth_methods, require_consent, created_at
+FROM oauth_clients
+WHERE tenant_id = $1 AND client_id = $2
+LIMIT 1`
+
+	var (
+		rowID        int64
+		rowTenantID  int64
+		rowAppID     sql.NullInt64
+		rowClientID  string
+		rowSecret    string
+		redirectURIs []string
+		grants       []string
+		scopes       []string
+		authMethods  []string
+		requireCons  bool
+		createdAt    time.Time
+	)
+
+	if err := r.db.QueryRow(ctx, query, tenantID, clientID).Scan(
+		&rowID,
+		&rowTenantID,
+		&rowAppID,
+		&rowClientID,
+		&rowSecret,
+		&redirectURIs,
+		&grants,
+		&scopes,
+		&authMethods,
+		&requireCons,
+		&createdAt,
+	); err != nil {
+		return domain.OAuthClient{}, fmt.Errorf("get oauth client: %w", err)
+	}
+
+	var appID *int64
+	if rowAppID.Valid {
+		val := rowAppID.Int64
+		appID = &val
+	}
+
+	return domain.OAuthClient{
+		ID:                       rowID,
+		TenantID:                 rowTenantID,
+		AppID:                    appID,
+		ClientID:                 rowClientID,
+		ClientSecret:             rowSecret,
+		RedirectURIs:             append([]string{}, redirectURIs...),
+		Grants:                   append([]string{}, grants...),
+		Scopes:                   append([]string{}, scopes...),
+		TokenEndpointAuthMethods: append([]string{}, authMethods...),
+		RequireConsent:           requireCons,
+		CreatedAt:                createdAt,
+	}, nil
 }
 
 func mapTenantRow(row sqlc.GetTenantRow) domain.Tenant {
