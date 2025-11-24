@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/smallbiznis/smallbiznis-auth/compare/v1.0.0...v1.1.0) (2025-11-24)
+
+
+### Features
+
+* fix authorization code ([e73c984](https://github.com/smallbiznis/smallbiznis-auth/commit/e73c984080d14c6e6e0cccd26ebad5a0a8e02a4e))
+
 # 1.0.0 (2025-11-21)
 
 
