@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/smallbiznis/smallbiznis-auth/compare/v1.1.0...v1.1.1) (2025-11-24)
+
+
+### Bug Fixes
+
+* remove fmt ([36657f1](https://github.com/smallbiznis/smallbiznis-auth/commit/36657f1ed17afae5dcdeb09a1669cdb275cd4199))
+
 # [1.1.0](https://github.com/smallbiznis/smallbiznis-auth/compare/v1.0.0...v1.1.0) (2025-11-24)
 
 
