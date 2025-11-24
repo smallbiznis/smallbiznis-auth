@@ -453,8 +453,8 @@ ON CONFLICT DO NOTHING;
 -- Primary domains
 INSERT INTO domains (id, tenant_id, host, is_primary, verified)
 VALUES
-    (1001, 1000, 'accounts.smallbiznisapp.io', TRUE, TRUE),
-    (2001, 2000, 'kopikenangan.smallbiznisapp.io', TRUE, TRUE),
+    (1001, 1000, 'smallbiznis.smallbiznisapp.io', TRUE, TRUE),
+    (2001, 2000, 'kopikenangan.smallbiznisapp.io', TRUE, TRUE)
 ON CONFLICT DO NOTHING;
 
 -- OAuth apps & clients (Postman-friendly defaults)
@@ -486,7 +486,9 @@ VALUES
         'kopi-pos-secret',
         ARRAY['https://oauth.pstmn.io/v1/callback', 'http://localhost:4000/callback'],
         ARRAY['authorization_code', 'refresh_token'],
-        ARRAY['openid', 'profile']
+        ARRAY['openid', 'profile'],
+        ARRAY['client_secret_basic'],
+        FALSE
     )
 ON CONFLICT DO NOTHING;
 

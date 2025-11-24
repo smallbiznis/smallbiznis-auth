@@ -48,7 +48,7 @@ func (h *AuthHandler) OpenIDConfig(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "invalid_tenant", "error_description": "Tenant not resolved."})
 		return
 	}
-	c.JSON(http.StatusOK, h.Discovery.OpenIDConfigurationResponse(hostOnly(c.Request), tenantCtx))
+	c.JSON(http.StatusOK, h.Discovery.OpenIDConfigurationResponse(schemeOnly(c.Request), hostOnly(c.Request), tenantCtx))
 }
 
 // JWKS exposes tenant public keys.
@@ -326,7 +326,7 @@ func (h *AuthHandler) OAuthAuthorize(c *gin.Context) {
 	if clientID == "" {
 		h.oauthErrorRedirect(c, "invalid_request", "client_id is required.")
 		return
-	}
+	}	
 
 	if !h.Auth.IsValidRedirectURI(c.Request.Context(), tenantCtx.Tenant.ID, clientID, redirectURI) {
 		h.oauthErrorRedirect(c, "invalid_request", "redirect_uri not registered for this client.")
@@ -346,7 +346,7 @@ func (h *AuthHandler) OAuthAuthorize(c *gin.Context) {
 	}
 
 	// Only session cookie authentication is allowed for /oauth/authorize
-	token, _ := c.Cookie("sb_session")
+	token, err := c.Cookie("sb_access_token")
 	if strings.TrimSpace(token) == "" {
 		loginURL := &url.URL{
 			Scheme: schemeOnly(c.Request),

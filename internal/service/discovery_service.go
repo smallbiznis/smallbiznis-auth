@@ -53,8 +53,8 @@ func (s *DiscoveryService) TenantMetadata(ctx *tenant.Context) TenantDiscoveryRe
 }
 
 // OpenIDConfigurationResponse builds the OIDC document using request host.
-func (s *DiscoveryService) OpenIDConfigurationResponse(host string, ctx *tenant.Context) OpenIDConfiguration {
-	issuer := fmt.Sprintf("https://%s", host)
+func (s *DiscoveryService) OpenIDConfigurationResponse(schema, host string, ctx *tenant.Context) OpenIDConfiguration {
+	issuer := fmt.Sprintf("%s://%s", schema, host)
 	base := issuer
 	authorize := fmt.Sprintf("%s/oauth/authorize", base)
 	token := fmt.Sprintf("%s/oauth/token", base)

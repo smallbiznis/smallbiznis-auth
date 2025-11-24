@@ -48,6 +48,10 @@ func (h *AuthHandler) PasswordLogin(c *gin.Context) {
 		return
 	}
 
+	maxAge := 3600
+	setCookie(c, "sb_access_token", resp.AccessToken, maxAge, "/", ".smallbiznisapp.io", false, true)
+	setCookie(c, "sb_refresh_token", resp.RefreshToken, maxAge, "/", ".smallbiznisapp.io", false, true)
+
 	c.JSON(http.StatusOK, resp)
 }
 
@@ -84,6 +88,11 @@ func (h *AuthHandler) PasswordRegister(c *gin.Context) {
 		respondOAuthError(c, err)
 		return
 	}
+
+	maxAge := 3600
+	setCookie(c, "sb_access_token", resp.AccessToken, maxAge, "/", ".smallbiznisapp.io", false, true)
+	setCookie(c, "sb_refresh_token", resp.RefreshToken, maxAge, "/", ".smallbiznisapp.io", false, true)
+
 
 	c.JSON(http.StatusOK, resp)
 }
@@ -209,10 +218,21 @@ func (h *AuthHandler) Me(c *gin.Context) {
 }
 
 func respondOAuthError(c *gin.Context, err error) {
-	fmt.Printf("err: %v\n", err.Error())
 	if oauthErr, ok := err.(*service.OAuthError); ok {
 		c.JSON(oauthErr.Status, gin.H{"error": oauthErr.Code, "error_description": oauthErr.Description})
 		return
 	}
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "server_error", "error_description": err.Error()})
+}
+
+func setCookie(c *gin.Context, name, value string, maxAge int, path, domain string, secure, httpOnly bool) {
+	c.SetCookie(
+		name,   // name
+		value,         // value
+		maxAge,                // maxAge (1 jam)
+		path,                 // path
+		domain, // domain → penting!!
+		secure,                // secure → harus true kalau HTTPS
+		httpOnly,                // httpOnly → jangan bisa diakses JS
+	)
 }
